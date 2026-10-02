@@ -109,10 +109,12 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
 
     const attachments: Attachment[] = [];
     if (upload) {
-      const rel = storeUpload(workspace, upload.filename, upload.buffer);
+      // Prefer the name from the JSON payload: multipart header filenames are not reliably UTF-8.
       const meta = request.attachments[0];
+      const name = (typeof meta?.name === "string" && meta.name.trim()) || upload.filename || "upload";
+      const rel = storeUpload(workspace, name, upload.buffer);
       attachments.push({
-        name: meta?.name || upload.filename || path.basename(rel),
+        name,
         mime_type: upload.mimetype || meta?.mime_type,
         size_bytes: upload.buffer.length,
         workspace_path: rel,
