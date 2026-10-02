@@ -6,6 +6,7 @@ import {
   type ApprovalDecision,
   type ConversationResponse,
   type DecisionValue,
+  type TaskTimeline,
 } from "@ahmed/contract";
 
 // The app only knows the Core URL and its own app token. No model keys, no agent logic.
@@ -87,6 +88,11 @@ export function sendMessage(p: {
 
 export function getTask(taskId: string): Promise<AgentResponse> {
   return call<AgentResponse>(`/v1/tasks/${encodeURIComponent(taskId)}`);
+}
+
+/** v0.2: the task path for the flow board, built by the Core from its state and audit log. */
+export function getTimeline(taskId: string): Promise<TaskTimeline> {
+  return call<TaskTimeline>(`/v1/tasks/${encodeURIComponent(taskId)}/timeline`);
 }
 
 export function decide(taskId: string, actionId: string, decision: DecisionValue): Promise<AgentResponse> {

@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StatusBar as RNStatusBar,
   StyleSheet,
   Text,
@@ -25,20 +26,10 @@ import {
   type ResultData,
   type TaskStatus,
 } from "@ahmed/contract";
+import { FlowBoard } from "./src/FlowBoard";
+import { C } from "./src/theme";
 import { ApiError, CORE_URL, decide, getConversation, getTask, newId, sendMessage, type PickedFile } from "./src/api";
 
-const C = {
-  bg: "#000000",
-  surface: "#111111",
-  surface2: "#1A1A1A",
-  border: "#2A2A2A",
-  gold: "#D4AF37",
-  goldDim: "#8A7426",
-  text: "#F2F2F2",
-  muted: "#8C8C8C",
-  danger: "#E5484D",
-  ok: "#46A758",
-};
 
 const STORAGE_KEY = "ahmed.conversation_id";
 const POLL_MS = 2000;
@@ -85,6 +76,7 @@ export default function App() {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [showTasks, setShowTasks] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [board, setBoard] = useState<{ taskId: string; title: string } | null>(null);
   const listRef = useRef<FlatList<ConversationMessage>>(null);
 
   // ---- restore conversation id and state from the Core ----
@@ -202,6 +194,7 @@ export default function App() {
 
   // ---- render ----
   const latest = tasks[0]?.response;
+  const openFlow = (t: ConversationTask) => setBoard({ taskId: t.task_id, title: t.user_message });
 
   return (
     <View style={s.root}>
@@ -220,7 +213,7 @@ export default function App() {
           </Pressable>
         </View>
 
-        {showTasks && <TaskList tasks={tasks} />}
+        {showTasks && <TaskList tasks={tasks} onOpen={openFlow} />}
 
         {error && (
           <View style={s.errorBar}>
@@ -246,7 +239,10 @@ export default function App() {
             ListEmptyComponent={
               <Text style={[s.muted, s.emptyText]}>Attach a file and ask me to summarize it, or send a message.</Text>
             }
-            renderItem={({ item }) => <Bubble m={item} task={item.task_id ? taskById.get(item.task_id) : undefined} />}
+            renderItem={({ item }) => {
+              const task = item.task_id ? taskById.get(item.task_id) : undefined;
+              return <Bubble m={item} task={task} onOpenFlow={task && item.role === "user" ? () => openFlow(task) : undefined} />;
+            }}
           />
         )}
 
@@ -255,6 +251,10 @@ export default function App() {
             <ActivityIndicator color={C.gold} size="small" />
             <Text style={s.muted}>Working…</Text>
             <Badge status={running[0].response.status} />
+            <View style={s.flex} />
+            <Pressable onPress={() => openFlow(running[0])} style={s.flowBtn} hitSlop={8}>
+              <Text style={s.flowBtnText}>Watch live ›</Text>
+            </Pressable>
           </View>
         )}
 
@@ -312,6 +312,7 @@ export default function App() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+      {board && <FlowBoard taskId={board.taskId} title={board.title} onClose={() => setBoard(null)} />}
     </View>
   );
 }
@@ -326,7 +327,7 @@ function Badge({ status }: { status: TaskStatus | null }) {
   );
 }
 
-function Bubble({ m, task }: { m: ConversationMessage; task?: ConversationTask }) {
+function Bubble({ m, task, onOpenFlow }: { m: ConversationMessage; task?: ConversationTask; onOpenFlow?: () => void }) {
   const mine = m.role === "user";
   const r: AgentResponse | undefined = task?.response;
   const result = r?.response_type === "RESULT" || r?.response_type === "ERROR" ? (r.data as ResultData | null) : null;
@@ -342,6 +343,11 @@ function Bubble({ m, task }: { m: ConversationMessage; task?: ConversationTask }
       <View style={s.bubbleMeta}>
         <Text style={s.metaText}>{time(m.created_at)}</Text>
         {!mine && result?.verified === true && <Text style={[s.metaText, { color: C.ok }]}>✓ verified</Text>}
+        {onOpenFlow && (
+          <Pressable onPress={onOpenFlow} hitSlop={8}>
+            <Text style={[s.metaText, s.flowLink]}>Flow ›</Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -391,20 +397,25 @@ function Row({ k, v, danger }: { k: string; v: string; danger?: boolean }) {
   );
 }
 
-function TaskList({ tasks }: { tasks: ConversationTask[] }) {
+function TaskList({ tasks, onOpen }: { tasks: ConversationTask[]; onOpen: (t: ConversationTask) => void }) {
   return (
-    <View style={s.taskPanel}>
-      {tasks.length === 0 && <Text style={s.muted}>No tasks yet.</Text>}
+    <ScrollView style={s.taskPanel} contentContainerStyle={s.taskPanelContent}>
+      {tasks.length === 0 ? (
+        <Text style={s.muted}>No tasks yet.</Text>
+      ) : (
+        <Text style={s.taskHint}>Tap a task to see its flow.</Text>
+      )}
       {tasks.slice(0, 20).map((t) => (
-        <View key={t.task_id} style={s.taskRow}>
+        <Pressable key={t.task_id} style={s.taskRow} onPress={() => onOpen(t)}>
           <Text style={s.taskTime}>{time(t.created_at)}</Text>
           <Text style={s.taskMsg} numberOfLines={1}>
             {t.user_message || "(file)"}
           </Text>
           <Badge status={t.response.status} />
-        </View>
+          <Text style={s.flowLink}>›</Text>
+        </Pressable>
       ))}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -531,16 +542,20 @@ const s = StyleSheet.create({
   sendText: { color: C.bg, fontWeight: "800" },
   disabled: { opacity: 0.4 },
   taskPanel: {
-    maxHeight: 220,
+    maxHeight: 260,
+    flexGrow: 0,
     margin: 10,
-    padding: 10,
     borderRadius: 12,
     backgroundColor: C.surface,
     borderWidth: 1,
     borderColor: C.border,
-    gap: 6,
   },
-  taskRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  taskPanelContent: { padding: 10, gap: 6 },
+  taskHint: { color: C.muted, fontSize: 11 },
+  taskRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 },
+  flowLink: { color: C.gold, fontWeight: "700" },
+  flowBtn: { borderWidth: 1, borderColor: C.gold, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  flowBtnText: { color: C.gold, fontSize: 12, fontWeight: "700" },
   taskTime: { color: C.muted, fontSize: 11, width: 40 },
   taskMsg: { color: C.text, flex: 1, fontSize: 13 },
 });
