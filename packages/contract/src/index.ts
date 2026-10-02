@@ -136,3 +136,46 @@ export interface ConversationResponse {
   messages: ConversationMessage[];
   tasks: ConversationTask[];
 }
+
+// ---- v0.2 additions (additive only): task timeline for the live flow board ----
+
+export type TimelineNodeKind =
+  | "REQUEST"
+  | "MODEL"
+  | "TOOL"
+  | "APPROVAL"
+  | "DECISION"
+  | "EXECUTION"
+  | "VERIFICATION"
+  | "RECOVERY"
+  | "RESULT";
+
+export type TimelineNodeStatus = "DONE" | "RUNNING" | "WAITING" | "REJECTED" | "FAILED" | "NOT_REACHED";
+
+export interface TimelineNode {
+  /** Stable within the task, e.g. "model-2". */
+  id: string;
+  kind: TimelineNodeKind;
+  label: string;
+  status: TimelineNodeStatus;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_ms: number | null;
+  tool: string | null;
+  input_preview: string | null;
+  result_preview: string | null;
+  error: AgentError | null;
+  /** True when this node is the flow going back to the model after a tool result. */
+  loop_back: boolean;
+}
+
+export interface TaskTimeline {
+  contract_version: ContractVersion;
+  task_id: string;
+  status: TaskStatus;
+  /** False once the task reached a final status; the app stops polling then. */
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  nodes: TimelineNode[];
+}

@@ -2,6 +2,7 @@ import type { Attachment, DecisionValue, ErrorCode } from "@ahmed/contract";
 import { ModelError, type ModelBlock, type ModelClient, type ModelMessage } from "./model.js";
 import type { ActionRow, Store, TaskRow } from "./store.js";
 import { TOOL_REGISTRY, executeMove, getTool, planMove, readFileTool, verifyMove, type MovePlan } from "./tools.js";
+import { preview } from "./timeline.js";
 import { ToolError, type Workspace } from "./workspace.js";
 
 export const APPROVAL_TTL_MS = 15 * 60 * 1000;
@@ -66,8 +67,15 @@ export class Agent {
     let usedTool: string | null = null;
 
     for (let step = 0; step < MAX_MODEL_STEPS; step++) {
+      // Recorded before the call so the flow board can show a model step that is still running.
+      this.store.audit("MODEL_CALLED", { taskId: task.id }, { step: step + 1 });
       const turn = await this.model.complete({ system: SYSTEM_PROMPT, messages, tools });
-      this.store.audit("MODEL_RESPONDED", { taskId: task.id }, { tool_calls: turn.toolCalls.map((c) => c.name) });
+      // Only counts and tool names: the model's text can quote file contents.
+      this.store.audit("MODEL_RESPONDED", { taskId: task.id }, {
+        step: step + 1,
+        tool_calls: turn.toolCalls.map((c) => c.name),
+        text_chars: turn.text.length,
+      });
 
       if (turn.toolCalls.length === 0) {
         this.complete(task, turn.text || "(no answer)", usedTool);
@@ -77,7 +85,7 @@ export class Agent {
       messages.push(turn.assistant);
       const results: ModelBlock[] = [];
       for (const call of turn.toolCalls) {
-        this.store.audit("TOOL_CALLED", { taskId: task.id }, { tool: call.name, input: call.input });
+        this.store.audit("TOOL_CALLED", { taskId: task.id }, { tool: call.name, input: preview(JSON.stringify(call.input ?? null)) });
         const spec = getTool(call.name);
         try {
           if (!spec) throw new ToolError("TOOL_ERROR", `Unknown tool "${call.name}".`);

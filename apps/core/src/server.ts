@@ -14,6 +14,7 @@ import { openDb } from "./db.js";
 import type { ModelClient } from "./model.js";
 import { conversationResponse, errorResponse, taskResponse } from "./responses.js";
 import { Store, type Clock } from "./store.js";
+import { buildTimeline } from "./timeline.js";
 import { Workspace } from "./workspace.js";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -155,6 +156,14 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     const task = store.getTask(req.params.taskId);
     if (!task) return reply.code(404).send(errorResponse("NOT_FOUND", "Task not found."));
     return taskResponse(store, task);
+  });
+
+  // ---- GET /v1/tasks/:taskId/timeline (v0.2, read-only) ----
+  app.get<{ Params: { taskId: string } }>("/v1/tasks/:taskId/timeline", async (req, reply) => {
+    agent.expireStale();
+    const task = store.getTask(req.params.taskId);
+    if (!task) return reply.code(404).send(errorResponse("NOT_FOUND", "Task not found."));
+    return buildTimeline(store, task);
   });
 
   // ---- POST /v1/tasks/:taskId/actions/:actionId/decision ----

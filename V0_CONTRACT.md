@@ -115,6 +115,7 @@ Response: `AgentResponse` for the task.
 | GET  | `/v1/tasks/{task_id}` | — | `AgentResponse` |
 | POST | `/v1/tasks/{task_id}/actions/{action_id}/decision` | `ApprovalDecision` | `AgentResponse` |
 | GET  | `/v1/conversations/{conversation_id}` | — | `ConversationResponse` |
+| GET  | `/v1/tasks/{task_id}/timeline` | — | `TaskTimeline` (added in v0.2, read-only, see §6) |
 
 The app polls `GET /v1/tasks/{task_id}` every 2 seconds while the task is still running.
 No connection is held open waiting for the user.
@@ -136,3 +137,41 @@ No connection is held open waiting for the user.
 
 `UNAUTHORIZED`, `BAD_REQUEST`, `NOT_FOUND`, `CONFLICT`, `APPROVAL_EXPIRED`, `UNSUPPORTED_FILE_TYPE`,
 `PATH_OUTSIDE_WORKSPACE`, `TOOL_ERROR`, `EXECUTION_FAILED`, `MODEL_ERROR`, `INTERRUPTED`, `INTERNAL`.
+
+## 6. Task timeline (added in v0.2, additive)
+
+`GET /v1/tasks/{task_id}/timeline` -> `TaskTimeline`. Read-only, needs the same Bearer token.
+Unknown task -> `404` `ERROR` (`NOT_FOUND`). Nothing else in the contract changed; `contract_version`
+stays `"0.1"`.
+
+The Core builds the timeline only from persisted data: the task row, its action row and the audit log.
+The app only draws it. While `active` is true the app polls this endpoint every 2 seconds.
+
+### 6.1 `TaskTimeline`
+
+| field            | type             | notes |
+|------------------|------------------|-------|
+| contract_version | `"0.1"`          | |
+| task_id          | string           | |
+| status           | `TaskStatus`     | current task status |
+| active           | boolean          | false once the status is `COMPLETED`, `FAILED` or `REJECTED` |
+| created_at       | string           | |
+| updated_at       | string           | |
+| nodes            | `TimelineNode[]` | in order; the first `NOT_REACHED` node is after the last reached one |
+
+### 6.2 `TimelineNode`
+
+| field          | type                       | notes |
+|----------------|----------------------------|-------|
+| id             | string                     | stable within the task, e.g. `model-2`, `tool-1` |
+| kind           | `TimelineNodeKind`         | `REQUEST` \| `MODEL` \| `TOOL` \| `APPROVAL` \| `DECISION` \| `EXECUTION` \| `VERIFICATION` \| `RECOVERY` \| `RESULT` |
+| label          | string                     | short title |
+| status         | `TimelineNodeStatus`       | `DONE` \| `RUNNING` \| `WAITING` (for Ahmed's approval) \| `REJECTED` \| `FAILED` \| `NOT_REACHED` |
+| started_at     | string \| null             | |
+| ended_at       | string \| null             | null while running or waiting |
+| duration_ms    | number \| null             | `ended_at - started_at` |
+| tool           | string \| null             | |
+| input_preview  | string \| null             | short, single line; never file contents, keys or tokens |
+| result_preview | string \| null             | short, single line |
+| error          | `AgentError` \| null       | |
+| loop_back      | boolean                    | true for a model step that follows a tool result (the flow went back to the model) |
