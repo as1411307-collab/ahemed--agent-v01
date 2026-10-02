@@ -12,3 +12,5 @@ dist/
 .expo/
 web-build/
 *.log
+# Playwright CLI output (may contain credentials)
+.playwright-cli/

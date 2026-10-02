@@ -13,6 +13,7 @@
     "typecheck": "npm run typecheck -w @ahmed/contract && npm run typecheck -w @ahmed/core"
   },
   "devDependencies": {
+    "@playwright/cli": "^0.1.22",
     "typescript": "^7.0.2"
   }
 }
