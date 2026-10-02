@@ -94,6 +94,28 @@ describe("1. read a file and summarize it", () => {
     expect(readFileSync(ws("inbox", "big.pdf")).length).toBe(pdf.length);
   });
 
+  it("accepts the multipart body exactly as expo/fetch builds it on the phone", async () => {
+    // expo/fetch: own boundary, percent-encoded filename, file part may have no Content-Type.
+    const boundary = "----ExpoFetchFormBoundaryAbCdEf0123456789";
+    const payload = requestPayload(CONV, "", { name: "تقرير.pdf", content: "x", type: "application/pdf" });
+    const pdf = makePdf("From iPhone");
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="payload"\r\n\r\n${JSON.stringify(payload)}\r\n`),
+      Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="${encodeURIComponent("تقرير.pdf")}"\r\n\r\n`),
+      pdf,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: body,
+    });
+    expect(res.statusCode).toBe(202);
+    await core.drain();
+    expect(readFileSync(ws("inbox", "تقرير.pdf")).equals(pdf)).toBe(true);
+  });
+
   it("audits rejected uploads instead of failing invisibly", async () => {
     const payload = { ...requestPayload(CONV, ""), input_type: "file" };
     const mp = multipart(payload);

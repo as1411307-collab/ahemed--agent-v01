@@ -1,3 +1,4 @@
+import { File } from "expo-file-system";
 import {
   CONTRACT_VERSION,
   type AgentRequest,
@@ -34,8 +35,13 @@ async function call<T>(path: string, init: RequestInit = {}, timeoutMs = 20_000)
       headers: { ...(init.headers as Record<string, string>), Authorization: `Bearer ${APP_TOKEN}` },
       signal: ctrl.signal,
     });
-  } catch {
-    throw new ApiError(0, "NETWORK", `Cannot reach the Core at ${CORE_URL}. Is it running and on the same Wi-Fi?`);
+  } catch (err) {
+    // Keep the real reason visible: not every fetch failure is "cannot reach the Core".
+    if (ctrl.signal.aborted) {
+      throw new ApiError(0, "TIMEOUT", `The Core at ${CORE_URL} did not answer in ${Math.round(timeoutMs / 1000)} s.`);
+    }
+    const reason = err instanceof Error && err.message ? err.message : String(err);
+    throw new ApiError(0, "NETWORK", `Could not send to the Core at ${CORE_URL}: ${reason}`);
   } finally {
     clearTimeout(timer);
   }
@@ -70,12 +76,11 @@ export function sendMessage(p: {
   const form = new FormData();
   form.append("payload", JSON.stringify(payload));
   if (p.file) {
-    // React Native FormData file part.
-    form.append("file", {
-      uri: p.file.uri,
-      name: p.file.name,
-      type: p.file.mimeType ?? "application/octet-stream",
-    } as unknown as Blob);
+    // Expo SDK 57 replaces global fetch with expo/fetch, which rejects React Native's
+    // { uri, name, type } file parts ("Unsupported FormDataPart implementation").
+    // An expo-file-system File implements Blob and is what expo/fetch can upload.
+    // The Core takes the display name from payload.attachments[0].name.
+    form.append("file", new File(p.file.uri));
   }
   return call<AgentResponse>("/v1/messages", { method: "POST", body: form }, 120_000);
 }
