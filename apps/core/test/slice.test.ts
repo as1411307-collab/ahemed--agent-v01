@@ -85,6 +85,31 @@ describe("1. read a file and summarize it", () => {
     expect(second.message).toContain("ثاني");
   });
 
+  it("accepts a file with no text (a several-MB PDF, as the phone sends it)", async () => {
+    const pdf = Buffer.concat([makePdf("Big PDF"), Buffer.alloc(3 * 1024 * 1024, 32)]);
+    const sent = await send(core, CONV, "", { name: "big.pdf", content: pdf, type: "application/pdf" });
+    expect(sent.statusCode).toBe(202);
+    expect(sent.body.data).toMatchObject({ attachments: [{ name: "big.pdf", workspace_path: "inbox/big.pdf", size_bytes: pdf.length }] });
+    await core.drain();
+    expect(readFileSync(ws("inbox", "big.pdf")).length).toBe(pdf.length);
+  });
+
+  it("audits rejected uploads instead of failing invisibly", async () => {
+    const payload = { ...requestPayload(CONV, ""), input_type: "file" };
+    const mp = multipart(payload);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("requires a 'file' part");
+    const rejected = core.store.listAudit().filter((a) => a.event === "REQUEST_REJECTED");
+    expect(rejected).toHaveLength(1);
+    expect(JSON.parse(rejected[0].detail!).request_id).toBe(payload.request_id);
+  });
+
   it("returns a clear ERROR for unsupported file types", async () => {
     const res = await sendAndWait(core, CONV, "summarize this", { name: "photo.png", content: "not really a png", type: "image/png" });
     expect(res.status).toBe("FAILED");

@@ -71,7 +71,13 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
 
   // ---- POST /v1/messages ----
   app.post("/v1/messages", async (req, reply) => {
-    if (!req.isMultipart()) return reply.code(400).send(errorResponse("BAD_REQUEST", "Expected multipart/form-data."));
+    // Rejected uploads are audited and logged so a failed send from the phone is never invisible.
+    const reject = (status: number, message: string, requestId: string | null = null) => {
+      req.log.warn({ status, reason: message }, "message rejected");
+      store.audit("REQUEST_REJECTED", {}, { status, reason: message, request_id: requestId, content_type: req.headers["content-type"] ?? null });
+      return reply.code(status).send(errorResponse("BAD_REQUEST", message, { request_id: requestId }));
+    };
+    if (!req.isMultipart()) return reject(400, "Expected multipart/form-data.");
 
     let payloadRaw: string | undefined;
     let upload: { filename: string; mimetype: string; buffer: Buffer } | undefined;
@@ -79,12 +85,10 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
       if (part.type === "file") {
         if (part.fieldname !== "file" || upload) {
           await part.toBuffer();
-          return reply.code(400).send(errorResponse("BAD_REQUEST", "Only one file, in the field 'file', is allowed."));
+          return reject(400, "Only one file, in the field 'file', is allowed.");
         }
         const buffer = await part.toBuffer();
-        if (part.file.truncated) {
-          return reply.code(413).send(errorResponse("BAD_REQUEST", "File is larger than 25 MB."));
-        }
+        if (part.file.truncated) return reject(413, "File is larger than 25 MB.");
         upload = { filename: part.filename, mimetype: part.mimetype, buffer };
       } else if (part.fieldname === "payload") {
         payloadRaw = String(part.value);
@@ -92,10 +96,10 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     }
 
     const parsed = parseRequest(payloadRaw);
-    if (typeof parsed === "string") return reply.code(400).send(errorResponse("BAD_REQUEST", parsed));
+    if (typeof parsed === "string") return reject(400, parsed);
     const request = parsed;
     if (request.input_type === "file" && !upload) {
-      return reply.code(400).send(errorResponse("BAD_REQUEST", "input_type 'file' requires a 'file' part.", { request_id: request.request_id }));
+      return reject(400, "input_type 'file' requires a 'file' part.", request.request_id);
     }
 
     // Safe retry: the same request_id never creates a second task.

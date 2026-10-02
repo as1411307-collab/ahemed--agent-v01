@@ -53,7 +53,14 @@ function statusColor(s: TaskStatus | null): string {
 }
 
 function errorText(e: unknown): string {
-  return e instanceof ApiError ? e.message : "Something went wrong.";
+  if (e instanceof ApiError) return e.message;
+  if (e instanceof Error && e.message) return e.message;
+  return "Something went wrong.";
+}
+
+function sizeText(bytes?: number): string {
+  if (bytes === undefined) return "";
+  return bytes < 1024 * 1024 ? ` · ${Math.max(1, Math.round(bytes / 1024))} KB` : ` · ${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function time(iso: string): string {
@@ -77,6 +84,7 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);
   const [showTasks, setShowTasks] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
   const listRef = useRef<FlatList<ConversationMessage>>(null);
 
   // ---- restore conversation id and state from the Core ----
@@ -131,7 +139,11 @@ export default function App() {
   // ---- actions ----
   const doSend = useCallback(
     async (p: PendingSend) => {
-      if (!conversationId) return;
+      if (!conversationId) {
+        setError({ text: "Still connecting to the Core. Try again in a moment.", retry: () => void doSend(p) });
+        return;
+      }
+      setHint(null);
       setSending(true);
       try {
         await sendMessage({ requestId: p.requestId, conversationId, text: p.text, file: p.file });
@@ -150,16 +162,27 @@ export default function App() {
   );
 
   const onSend = () => {
+    if (sending) return;
     const t = text.trim();
-    if ((!t && !file) || sending) return;
+    if (!t && !file) {
+      setHint("Type a message or attach a file first.");
+      return;
+    }
     void doSend({ requestId: newId(), text: t, file });
   };
 
   const onPick = async () => {
-    const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
-    if (res.canceled || !res.assets?.length) return;
-    const a = res.assets[0];
-    setFile({ uri: a.uri, name: a.name, mimeType: a.mimeType, size: a.size });
+    setHint(null);
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+      if (res.canceled) return;
+      const a = res.assets?.[0];
+      if (!a?.uri) throw new Error("The picker returned no file.");
+      setFile({ uri: a.uri, name: a.name || "file", mimeType: a.mimeType, size: a.size });
+      setError(null);
+    } catch (e) {
+      setError({ text: `Could not attach the file: ${errorText(e)}`, retry: () => void onPick() });
+    }
   };
 
   const onDecide = async (task: ConversationTask, decision: DecisionValue) => {
@@ -248,29 +271,42 @@ export default function App() {
           <View style={s.fileChip}>
             <Text style={s.fileChipText} numberOfLines={1}>
               📎 {file.name}
+              {sizeText(file.size)}
             </Text>
-            <Pressable onPress={() => setFile(null)} hitSlop={10}>
-              <Text style={s.fileChipX}>✕</Text>
-            </Pressable>
+            {!sending && (
+              <Pressable onPress={() => setFile(null)} hitSlop={10}>
+                <Text style={s.fileChipX}>✕</Text>
+              </Pressable>
+            )}
           </View>
         )}
 
+        {(sending || hint) && (
+          <Text style={[s.hint, hint && !sending ? { color: C.gold } : null]}>
+            {sending ? (file ? `Uploading ${file.name}…` : "Sending…") : hint}
+          </Text>
+        )}
+
         <View style={s.inputRow}>
-          <Pressable onPress={onPick} style={s.iconBtn} disabled={sending}>
+          <Pressable onPress={onPick} style={[s.iconBtn, sending && s.disabled]} disabled={sending}>
             <Text style={s.iconBtnText}>📎</Text>
           </Pressable>
           <TextInput
             style={s.input}
             value={text}
-            onChangeText={setText}
-            placeholder={file ? "What should I do with this file?" : "Message"}
+            onChangeText={(v) => {
+              setText(v);
+              if (hint) setHint(null);
+            }}
+            placeholder={file ? "Optional: what should I do with it?" : "Message"}
             placeholderTextColor={C.muted}
             multiline
           />
+          {/* Never a dead button: when there is nothing to send, pressing it explains why. */}
           <Pressable
             onPress={onSend}
             style={[s.sendBtn, (sending || (!text.trim() && !file)) && s.disabled]}
-            disabled={sending || (!text.trim() && !file)}
+            disabled={sending}
           >
             {sending ? <ActivityIndicator color={C.bg} /> : <Text style={s.sendText}>Send</Text>}
           </Pressable>
@@ -456,6 +492,7 @@ const s = StyleSheet.create({
   },
   fileChipText: { color: C.gold, flex: 1 },
   fileChipX: { color: C.muted, fontSize: 16 },
+  hint: { color: C.muted, fontSize: 12, marginHorizontal: 16, marginBottom: 4 },
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
