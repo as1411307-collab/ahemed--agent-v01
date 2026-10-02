@@ -52,4 +52,18 @@
 - التقرير النهائي: اكتبه بالعربية في docs/REPORT.md، واعرض ملخصًا قصيرًا بالإنجليزية في الترمنال.
 
 ## التشغيل والاختبار
-(يُملأ عند انتهاء البناء: أوامر تشغيل الـCore، وتشغيل التطبيق عبر Expo Go، وتشغيل الاختبارات، والمتغيرات المطلوبة في ملفات .env.)
+كل الأوامر من جذر المشروع في PowerShell.
+
+- التثبيت (مرة واحدة): `npm install`
+- إعداد الـCore: `Copy-Item apps/core/.env.example apps/core/.env` ثم عبّئ:
+  - `APP_TOKEN`: سر طويل عشوائي (مثال لتوليده: `[guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N")`)
+  - `ANTHROPIC_API_KEY`، `MODEL_NAME` (افتراضيًا `claude-opus-5-5`)
+  - اختياري: `HOST` (0.0.0.0)، `PORT` (8787)، `WORKSPACE_ROOT` (./workspace)، `DB_FILE` (./ahmed-core.db) — المسارات نسبية إلى apps/core
+- تشغيل الـCore: `npm run core` (يستمع على 0.0.0.0:8787، ويُنشئ apps/core/workspace/inbox وقاعدة البيانات تلقائيًا)
+- إعداد التطبيق: `Copy-Item apps/mobile/.env.example apps/mobile/.env` ثم عبّئ:
+  - `EXPO_PUBLIC_CORE_URL=http://<IP الكمبيوتر على الواي فاي>:8787` (من `ipconfig`، وليس localhost)
+  - `EXPO_PUBLIC_APP_TOKEN` = نفس قيمة `APP_TOKEN`
+- تشغيل التطبيق: `npm run mobile` ثم امسح رمز QR بتطبيق Expo Go (الجوال على نفس الشبكة). بعد تعديل .env أعد تشغيل Expo.
+- الاختبارات: `npm test` (Vitest مع FakeModelClient، بدون مفتاح أو شبكة)
+- فحص الأنواع: `npm run typecheck` (contract + core)، و`npm run typecheck -w @ahmed/mobile`
+- أول تشغيل للـCore قد يُظهر نافذة Windows Firewall: اسمح لـNode على الشبكات الخاصة (Private) حتى يصل الجوال.
