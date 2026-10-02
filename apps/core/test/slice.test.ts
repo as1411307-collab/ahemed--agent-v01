@@ -485,6 +485,7 @@ describe("10. security: workspace boundary and app token", () => {
       { method: "GET" as const, url: "/v1/tasks/x" },
       { method: "POST" as const, url: "/v1/tasks/x/actions/y/decision", payload: { action_id: "y", decision: "APPROVE" } },
       { method: "GET" as const, url: `/v1/conversations/${CONV}` },
+      { method: "GET" as const, url: "/v1/tasks/x/timeline" },
     ];
     for (const call of calls) {
       for (const authorization of [undefined, "Bearer wrong-token", "test-app-token"]) {
