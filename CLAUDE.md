@@ -11,6 +11,7 @@
 
 ## المراجع
 - docs/BUILD_PROMPT.md: أمر البناء الحاكم لنطاق v0.1.
+- docs/BUILD_PROMPT_V02.md: أمر البناء الحاكم لنطاق v0.2 (لوحة المسار الحية).
 - V0_CONTRACT.md: العقد بين التطبيق والـCore، وpackages/contract يطابقه حرفيًا.
 - docs/VISION.md: للسياق فقط.
 - عند أي تعارض: docs/BUILD_PROMPT.md هو الحاكم.
@@ -65,5 +66,6 @@
   - `EXPO_PUBLIC_APP_TOKEN` = نفس قيمة `APP_TOKEN`
 - تشغيل التطبيق: `npm run mobile` ثم امسح رمز QR بتطبيق Expo Go (الجوال على نفس الشبكة). بعد تعديل .env أعد تشغيل Expo.
 - الاختبارات: `npm test` (Vitest مع FakeModelClient، بدون مفتاح أو شبكة)
+- لوحة المسار (v0.2): من التطبيق اضغط `Flow ›` تحت رسالة، أو `Tasks` ثم مهمة، أو `Watch live ›` أثناء التنفيذ. الـCore يخدمها من `GET /v1/tasks/{task_id}/timeline` (يحتاج التوكن).
 - فحص الأنواع: `npm run typecheck` (contract + core)، و`npm run typecheck -w @ahmed/mobile`
 - أول تشغيل للـCore قد يُظهر نافذة Windows Firewall: اسمح لـNode على الشبكات الخاصة (Private) حتى يصل الجوال.
