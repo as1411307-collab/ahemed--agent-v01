@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.local
+*.env
+!.env.example
+workspace/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+dist/
+.expo/
+web-build/
+*.log
