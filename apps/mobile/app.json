@@ -8,8 +8,20 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#000000",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ahmed.agent",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "يستخدم أحمد إيجنت الميكروفون للمحادثة الصوتية مع وكيلك عند بدء المكالمة.",
+        "NSLocalNetworkUsageDescription": "يتصل أحمد إيجنت بالـCore على الكمبيوتر في نفس الشبكة المحلية.",
+        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true }
+      }
     },
+    "plugins": [
+      "./plugins/withVoicePermissions",
+      "expo-dev-client",
+      ["@config-plugins/react-native-webrtc", { "microphonePermission": "يستخدم أحمد إيجنت الميكروفون للمحادثة الصوتية مع وكيلك عند بدء المكالمة." }],
+      ["expo-build-properties", { "ios": { "enableSceneSupport": true } }]
+    ],
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#000000",

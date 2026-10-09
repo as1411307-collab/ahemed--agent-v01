@@ -5,7 +5,7 @@
 ## المشروع
 - AHMED Agent: وكيل شخصي لأحمد. النسخة الحالية v0.1 هدفها Vertical Slice واحد فقط يعمل من تطبيق الجوال حتى التنفيذ والتحقق والنتيجة.
 - المعمارية: Ahmed App → Core API → Agent Core + State Machine → Model / Tools
-- التطبيق (apps/mobile) واجهة إدخال وعرض فقط: لا منطق وكيل، ولا اتصال بمزود النموذج، ولا مفاتيح نماذج.
+- التطبيق (apps/mobile) واجهة إدخال وعرض فقط: لا منطق وكيل ولا مفاتيح نماذج. اتصالات المهام والقرارات بالـCore فقط. استثناء الصوت: WebRTC يحمل الميكروفون والصوت مباشرة إلى مزود الصوت بعد إعداد الجلسة من الـCore، دون أي مفتاح في التطبيق.
 - الـCore (apps/core) يملك الحالة والقرار والصلاحيات والتدقيق.
 - n8n غير مربوط في v0.1.
 
@@ -13,12 +13,13 @@
 - docs/BUILD_PROMPT.md: أمر البناء الحاكم لنطاق v0.1.
 - V0_CONTRACT.md: العقد بين التطبيق والـCore، وpackages/contract يطابقه حرفيًا.
 - docs/VISION.md: للسياق فقط.
+- docs/VOICE.md: امتداد الصوت المطلوب صراحة من أحمد في 9 أكتوبر 2026، وإجراءات تشغيله واختباره. هذا الطلب يوسّع نطاق الأمر الأصلي الذي أجّل الصوت؛ لا يغيّر عقل الوكيل أو صلاحياته.
 - عند أي تعارض: docs/BUILD_PROMPT.md هو الحاكم.
 
 ## الستاك (محسوم)
-- Monorepo بـ npm workspaces: apps/core (Node + TypeScript + Fastify)، apps/mobile (Expo + TypeScript عبر Expo Go)، packages/contract.
+- Monorepo بـ npm workspaces: apps/core (Node + TypeScript + Fastify)، apps/mobile (Expo SDK 57 + TypeScript؛ Expo Go للنص وDevelopment Build للصوت)، packages/contract.
 - SQLite عبر better-sqlite3. الاختبارات Vitest مع FakeModelClient.
-- مزود نموذج واحد: Anthropic. ANTHROPIC_API_KEY وMODEL_NAME من env فقط.
+- نموذج الوكيل: Anthropic. ANTHROPIC_API_KEY وMODEL_NAME من env فقط. OpenAI Realtime طبقة صوت اختيارية للتفريغ ونطق نتيجة الـCore؛ الرد التلقائي والأدوات فيها معطّلان. OPENAI_API_KEY من env في الـCore فقط.
 
 ## البيئة
 - Windows وPowerShell. أي سكربت في package.json لازم يعمل على Windows، بدون الاعتماد على bash أو أوامر Unix.
@@ -63,7 +64,15 @@
 - إعداد التطبيق: `Copy-Item apps/mobile/.env.example apps/mobile/.env` ثم عبّئ:
   - `EXPO_PUBLIC_CORE_URL=http://<IP الكمبيوتر على الواي فاي>:8787` (من `ipconfig`، وليس localhost)
   - `EXPO_PUBLIC_APP_TOKEN` = نفس قيمة `APP_TOKEN`
-- تشغيل التطبيق: `npm run mobile` ثم امسح رمز QR بتطبيق Expo Go (الجوال على نفس الشبكة). بعد تعديل .env أعد تشغيل Expo.
+- تشغيل النص على Expo Go: `npm run start:text -w @ahmed/mobile` (يجب أن يدعم SDK 57). بعد تعديل .env أعد تشغيل Expo.
+- تشغيل الصوت: اتّبع `docs/VOICE.md` لبناء وتثبيت Development Build على iPhone، ثم `npm run mobile:voice`. البناء من Windows عبر EAS يحتاج حساب Apple Developer وتسجيل الجهاز؛ البناء المحلي يحتاج Mac وXcode. لا يُدّعى اختبار الجهاز دون دليل.
+- إعداد الصوت في الـCore: `VOICE_ENABLED=true` ومفتاح `OPENAI_API_KEY` معتمد في بيئة الخادم؛ لا تضعه في أي `EXPO_PUBLIC_*`. الوضع الافتراضي `false` يبقي تشغيل النص السابق ممكنًا.
 - الاختبارات: `npm test` (Vitest مع FakeModelClient، بدون مفتاح أو شبكة)
 - فحص الأنواع: `npm run typecheck` (contract + core)، و`npm run typecheck -w @ahmed/mobile`
 - أول تشغيل للـCore قد يُظهر نافذة Windows Firewall: اسمح لـNode على الشبكات الخاصة (Private) حتى يصل الجوال.
+
+### تحقق امتداد الصوت — 9 أكتوبر 2026
+- 73 اختبارًا برمجيًا نجحت: 40 سابقًا و33 للصوت والموارد. مزود الصوت والوسائط الأصلية مُحاكَيان في الاختبارات.
+- فحص الأنواع: contract / core / mobile ناجح.
+- توليد iOS عبر `expo prebuild --platform ios --no-install` وتجميع JavaScript/Hermes عبر `expo export --platform ios` ناجحان. أُفحص Info.plist: وصف الميكروفون موجود، الكاميرا غير مطلوبة، ودعم المشاهد لـiOS 27 مفعّل.
+- لم تُنفّذ CocoaPods أو Xcode أو التوقيع أو تثبيت نسخة iPhone، ولم يُجر اتصال صوتي مدفوع. الاختبار الفعلي وخطة القبول موثّقان في `docs/VOICE.md`.

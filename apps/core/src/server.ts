@@ -8,13 +8,17 @@ import {
   type AgentRequest,
   type ApprovalDecision,
   type Attachment,
+  type VoiceSessionRequest,
 } from "@ahmed/contract";
 import { Agent, APPROVAL_TTL_MS } from "./agent.js";
 import { openDb } from "./db.js";
+import { Messages } from "./messages.js";
 import type { ModelClient } from "./model.js";
 import { conversationResponse, errorResponse, taskResponse } from "./responses.js";
 import { Store, type Clock } from "./store.js";
 import { Workspace } from "./workspace.js";
+import { VoiceHttpError, VoiceSessions } from "./voice.js";
+import type { VoiceProvider } from "./voiceProvider.js";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -26,6 +30,8 @@ export interface CoreOptions {
   clock?: Clock;
   approvalTtlMs?: number;
   logger?: boolean;
+  voice?: VoiceProvider;
+  voiceSessionMs?: number;
 }
 
 export interface Core {
@@ -33,6 +39,7 @@ export interface Core {
   store: Store;
   agent: Agent;
   workspace: Workspace;
+  voice?: VoiceSessions;
   /** Resolves when all background message processing has finished. */
   drain(): Promise<void>;
   close(): Promise<void>;
@@ -46,7 +53,8 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
   const agent = new Agent(store, workspace, opts.model, opts.approvalTtlMs ?? APPROVAL_TTL_MS);
   agent.recover();
 
-  const inFlight = new Set<Promise<void>>();
+  const messages = new Messages(store, agent);
+  const voice = opts.voice ? new VoiceSessions(opts.voice, store, messages, opts.voiceSessionMs) : undefined;
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 1024 * 1024 });
   await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 5 } });
 
@@ -61,6 +69,9 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
 
   app.setNotFoundHandler((_req, reply) => reply.code(404).send(errorResponse("NOT_FOUND", "Route not found.")));
   app.setErrorHandler((err: { statusCode?: number; message: string }, req, reply) => {
+    if (err instanceof VoiceHttpError) {
+      return reply.code(err.statusCode).send(errorResponse(err.statusCode >= 500 ? "MODEL_ERROR" : err.statusCode === 404 ? "NOT_FOUND" : err.statusCode === 409 ? "CONFLICT" : "BAD_REQUEST", err.message));
+    }
     const status = err.statusCode && err.statusCode < 500 ? err.statusCode : 500;
     if (status === 500) req.log.error(err);
     store.audit("ERROR", {}, { route: req.url, message: err.message });
@@ -125,27 +136,7 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
       });
     }
 
-    const task = store.tx(() => {
-      store.ensureConversation(request.conversation_id);
-      const t = store.createTask({
-        conversationId: request.conversation_id,
-        requestId: request.request_id,
-        userMessage: request.message,
-        attachments,
-      });
-      store.addMessage({ conversationId: request.conversation_id, role: "user", content: request.message, attachments, taskId: t.id });
-      store.audit("REQUEST_RECEIVED", { taskId: t.id }, {
-        request_id: request.request_id,
-        conversation_id: request.conversation_id,
-        input_type: request.input_type,
-        message: request.message,
-        attachments,
-      });
-      return t;
-    });
-
-    const job = agent.processTask(task.id).finally(() => inFlight.delete(job));
-    inFlight.add(job);
+    const task = messages.submit(request, attachments);
     return reply.code(202).send(taskResponse(store, store.getTask(task.id)!));
   });
 
@@ -169,6 +160,7 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
           .send(errorResponse("BAD_REQUEST", "Body must be {action_id (same as in the URL), decision: APPROVE|REJECT}."));
       }
       const outcome = agent.decide(taskId, actionId, body.decision);
+      if (outcome.kind !== "not_found") voice?.notifyTask(outcome.task);
       switch (outcome.kind) {
         case "not_found":
           return reply.code(404).send(errorResponse("NOT_FOUND", "No such action for this task."));
@@ -194,8 +186,34 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     return conversationResponse(store, req.params.conversationId);
   });
 
+  // Voice signaling uses the same APP_TOKEN. The client cannot set provider configuration.
+  const voiceEnabled = () => {
+    if (!voice) throw new VoiceHttpError(503, "Voice is not enabled on the Core. Text, files and approvals remain available.");
+    return voice;
+  };
+  app.post<{ Body: VoiceSessionRequest }>("/v1/voice/sessions", {
+    schema: { body: {
+      type: "object", required: ["conversation_id", "sdp"], additionalProperties: false,
+      properties: { conversation_id: { type: "string", minLength: 1, maxLength: 100, pattern: "\\S" }, sdp: { type: "string", minLength: 10, maxLength: 65_536 } },
+    } },
+  }, async (req, reply) => {
+    if (!/^v=0\r?\n/.test(req.body.sdp) || !/(?:^|\n)m=audio /.test(req.body.sdp)) throw new VoiceHttpError(400, "An audio SDP offer is required.");
+    const answer = await voiceEnabled().start(req.body.conversation_id, req.body.sdp);
+    return reply.code(201).send(answer);
+  });
+  app.get<{ Params: { sessionId: string } }>("/v1/voice/sessions/:sessionId", async (req) => {
+    agent.expireStale();
+    return voiceEnabled().get(req.params.sessionId);
+  });
+  app.delete<{ Params: { sessionId: string } }>("/v1/voice/sessions/:sessionId", async (req) => {
+    const v = voiceEnabled();
+    await v.end(req.params.sessionId);
+    return v.get(req.params.sessionId);
+  });
+
   const drain = async () => {
-    while (inFlight.size) await Promise.allSettled([...inFlight]);
+    await voice?.drain();
+    await messages.drain();
   };
 
   return {
@@ -203,10 +221,12 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     store,
     agent,
     workspace,
+    voice,
     drain,
     close: async () => {
-      await drain();
+      await voice?.close();
       await app.close();
+      await drain();
       db.close();
     },
   };

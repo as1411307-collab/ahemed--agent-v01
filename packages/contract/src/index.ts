@@ -136,3 +136,27 @@ export interface ConversationResponse {
   messages: ConversationMessage[];
   tasks: ConversationTask[];
 }
+
+// Voice is an additive transport. Transcripts still become ordinary v0.1 text tasks.
+export type VoiceState = "connecting" | "listening" | "thinking" | "speaking" | "closed" | "error";
+
+export interface VoiceSessionRequest {
+  conversation_id: string;
+  sdp: string;
+}
+
+export interface VoiceSessionSnapshot {
+  session_id: string;
+  conversation_id: string;
+  state: VoiceState;
+  user_speaking: boolean;
+  transcript: string;
+  task: AgentResponse | null;
+  error: string | null;
+  expires_at: string;
+  revision: number;
+}
+
+export interface VoiceSessionAnswer extends VoiceSessionSnapshot {
+  sdp: string;
+}

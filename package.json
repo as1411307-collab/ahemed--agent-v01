@@ -9,6 +9,7 @@
   "scripts": {
     "core": "npm run start -w @ahmed/core",
     "mobile": "npm run start -w @ahmed/mobile",
+    "mobile:voice": "npm run start:voice -w @ahmed/mobile",
     "test": "npm run test -w @ahmed/core",
     "typecheck": "npm run typecheck -w @ahmed/contract && npm run typecheck -w @ahmed/core"
   },

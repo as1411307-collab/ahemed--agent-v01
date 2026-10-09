@@ -6,6 +6,8 @@ import {
   type ApprovalDecision,
   type ConversationResponse,
   type DecisionValue,
+  type VoiceSessionAnswer,
+  type VoiceSessionSnapshot,
 } from "@ahmed/contract";
 
 // The app only knows the Core URL and its own app token. No model keys, no agent logic.
@@ -99,6 +101,21 @@ export function decide(taskId: string, actionId: string, decision: DecisionValue
 
 export function getConversation(conversationId: string): Promise<ConversationResponse> {
   return call<ConversationResponse>(`/v1/conversations/${encodeURIComponent(conversationId)}`);
+}
+
+export function startVoice(conversationId: string, sdp: string): Promise<VoiceSessionAnswer> {
+  return call<VoiceSessionAnswer>("/v1/voice/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversation_id: conversationId, sdp }),
+  }, 35_000);
+}
+
+export function getVoice(sessionId: string): Promise<VoiceSessionSnapshot> {
+  return call<VoiceSessionSnapshot>(`/v1/voice/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export function endVoice(sessionId: string): Promise<VoiceSessionSnapshot> {
+  return call<VoiceSessionSnapshot>(`/v1/voice/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
 }
 
 export function newId(): string {

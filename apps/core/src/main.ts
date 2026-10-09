@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { AnthropicModelClient } from "./model.js";
 import { createCore } from "./server.js";
+import { OpenAIVoiceProvider } from "./voiceProvider.js";
 
 // Secrets come from the environment only. A local .env (git-ignored) is loaded if present.
 const envFile = path.resolve(".env");
@@ -29,6 +30,12 @@ const core = await createCore({
   workspaceRoot,
   appToken,
   model: new AnthropicModelClient(apiKey, modelName),
+  voice: process.env.VOICE_ENABLED === "true" ? new OpenAIVoiceProvider({
+    apiKey: required("OPENAI_API_KEY"),
+    model: process.env.VOICE_MODEL || undefined,
+    transcriptionModel: process.env.VOICE_TRANSCRIPTION_MODEL || undefined,
+    voice: process.env.VOICE_NAME || undefined,
+  }) : undefined,
   logger: true,
 });
 

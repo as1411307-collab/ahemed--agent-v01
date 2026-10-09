@@ -26,6 +26,7 @@ import {
   type TaskStatus,
 } from "@ahmed/contract";
 import { ApiError, CORE_URL, decide, getConversation, getTask, newId, sendMessage, type PickedFile } from "./src/api";
+import { VoicePanel } from "./src/VoicePanel";
 
 const C = {
   bg: "#000000",
@@ -85,6 +86,7 @@ export default function App() {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [showTasks, setShowTasks] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [voiceActive, setVoiceActive] = useState(false);
   const listRef = useRef<FlatList<ConversationMessage>>(null);
 
   // ---- restore conversation id and state from the Core ----
@@ -162,7 +164,7 @@ export default function App() {
   );
 
   const onSend = () => {
-    if (sending) return;
+    if (sending || voiceActive) return;
     const t = text.trim();
     if (!t && !file) {
       setHint("Type a message or attach a file first.");
@@ -221,6 +223,9 @@ export default function App() {
         </View>
 
         {showTasks && <TaskList tasks={tasks} />}
+
+        <VoicePanel conversationId={conversationId} disabled={loading || sending || !!file}
+          onTask={() => { if (conversationId) void load(conversationId); }} onActiveChange={setVoiceActive} />
 
         {error && (
           <View style={s.errorBar}>
@@ -288,7 +293,7 @@ export default function App() {
         )}
 
         <View style={s.inputRow}>
-          <Pressable onPress={onPick} style={[s.iconBtn, sending && s.disabled]} disabled={sending}>
+          <Pressable onPress={onPick} style={[s.iconBtn, (sending || voiceActive) && s.disabled]} disabled={sending || voiceActive}>
             <Text style={s.iconBtnText}>📎</Text>
           </Pressable>
           <TextInput
@@ -301,12 +306,13 @@ export default function App() {
             placeholder={file ? "Optional: what should I do with it?" : "Message"}
             placeholderTextColor={C.muted}
             multiline
+            editable={!voiceActive}
           />
           {/* Never a dead button: when there is nothing to send, pressing it explains why. */}
           <Pressable
             onPress={onSend}
-            style={[s.sendBtn, (sending || (!text.trim() && !file)) && s.disabled]}
-            disabled={sending}
+            style={[s.sendBtn, (sending || voiceActive || (!text.trim() && !file)) && s.disabled]}
+            disabled={sending || voiceActive}
           >
             {sending ? <ActivityIndicator color={C.bg} /> : <Text style={s.sendText}>Send</Text>}
           </Pressable>

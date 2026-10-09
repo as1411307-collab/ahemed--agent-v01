@@ -136,3 +136,36 @@ No connection is held open waiting for the user.
 
 `UNAUTHORIZED`, `BAD_REQUEST`, `NOT_FOUND`, `CONFLICT`, `APPROVAL_EXPIRED`, `UNSUPPORTED_FILE_TYPE`,
 `PATH_OUTSIDE_WORKSPACE`, `TOOL_ERROR`, `EXECUTION_FAILED`, `MODEL_ERROR`, `INTERRUPTED`, `INTERNAL`.
+
+## 6. Optional voice transport (9 October 2026)
+
+The v0.1 task contract, input types, decisions, and state machine are unchanged. Trusted provider transcripts become ordinary `input_type: "text"` requests through the same persisted message processor. The Core derives a stable request ID from the application voice session and provider audio item; duplicate transcript events do not create new tasks.
+
+All routes below require the same `Authorization: Bearer <APP_TOKEN>` authentication.
+
+| method | path | body | response |
+|--------|------|------|----------|
+| POST | `/v1/voice/sessions` | `VoiceSessionRequest`: `{ conversation_id: string, sdp: string }` | `201` `VoiceSessionAnswer` |
+| GET | `/v1/voice/sessions/{session_id}` | — | `VoiceSessionSnapshot` |
+| DELETE | `/v1/voice/sessions/{session_id}` | — | closed `VoiceSessionSnapshot`; idempotent while retained |
+
+`VoiceSessionSnapshot`:
+
+| field | type |
+|-------|------|
+| session_id | string (Core-generated, not a provider credential) |
+| conversation_id | string |
+| state | `connecting` / `listening` / `thinking` / `speaking` / `closed` / `error` |
+| user_speaking | boolean (provider speech activity event) |
+| transcript | string (last accepted user transcript) |
+| task | `AgentResponse` or null (existing task contract) |
+| error | string or null |
+| expires_at | ISO timestamp |
+| revision | number |
+
+`VoiceSessionAnswer` adds `sdp: string` (WebRTC answer). It never includes an API key, ephemeral provider secret, or provider configuration. The phone polls session state every 750 ms and refreshes its existing conversation on task status changes. Streaming media stays on WebRTC; this polling does not carry audio.
+
+- Disabled voice: `503` / `MODEL_ERROR`. Failed provider setup: `502` / `MODEL_ERROR`. Invalid request: `400` / `BAD_REQUEST`. Missing session: `404` / `NOT_FOUND`. Another live session in the same conversation: `409` / `CONFLICT`. Session capacity: `429` / `BAD_REQUEST`.
+- Sessions have a ten-minute limit and stop after thirty seconds without a phone heartbeat (checked every five seconds). Closed snapshots are retained in bounded process memory. Restarted calls are not resumed; SQLite tasks, approval decisions, and audit history remain durable.
+- Speech never submits an approval decision. The existing explicit decision endpoint is still required.
+- Ending a call stops accepting new audio items. Already accepted tasks finish through the Core and remain visible in the existing conversation.
