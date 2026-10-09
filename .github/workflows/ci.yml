@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+  # Provider/native media are mocked by the tests; no API secrets are used.
+  ANTHROPIC_API_KEY: ""
+  OPENAI_API_KEY: ""
+
+jobs:
+  checks:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # A failed check must not cancel or hide the other check results.
+      fail-fast: false
+      matrix:
+        include:
+          - name: Core tests (includes voice)
+            # Discovers all Core tests, including voice.test.ts and the Mobile
+            # voiceClient lifecycle tests with mocked native media.
+            # Vitest automatically emits GitHub error annotations in Actions.
+            command: npm test
+          - name: Contract + Core TypeScript
+            command: npm run typecheck
+          - name: Mobile TypeScript
+            command: npm run typecheck -w @ahmed/mobile
+    steps:
+      - name: Check out the PR merge commit or branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install locked workspace dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run check
+        run: ${{ matrix.command }}
+
+      - name: Record software-check scope and result
+        if: always()
+        env:
+          CHECK_NAME: ${{ matrix.name }}
+          CHECK_STATUS: ${{ job.status }}
+        run: |
+          {
+            printf '### %s\n\nResult: **%s**\n\n' "$CHECK_NAME" "$CHECK_STATUS"
+            printf '%s\n' 'These are software checks only. Voice providers and native media are mocked.'
+            printf '%s\n' 'A passing CI run does not validate a native iOS build or live voice on an iPhone.'
+            printf '%s\n' 'Device acceptance remains separate: see docs/VOICE.md.'
+          } >> "$GITHUB_STEP_SUMMARY"

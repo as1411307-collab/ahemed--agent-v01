@@ -76,3 +76,9 @@
 - فحص الأنواع: contract / core / mobile ناجح.
 - توليد iOS عبر `expo prebuild --platform ios --no-install` وتجميع JavaScript/Hermes عبر `expo export --platform ios` ناجحان. أُفحص Info.plist: وصف الميكروفون موجود، الكاميرا غير مطلوبة، ودعم المشاهد لـiOS 27 مفعّل.
 - لم تُنفّذ CocoaPods أو Xcode أو التوقيع أو تثبيت نسخة iPhone، ولم يُجر اتصال صوتي مدفوع. الاختبار الفعلي وخطة القبول موثّقان في `docs/VOICE.md`.
+
+### GitHub Actions CI — 9 أكتوبر 2026
+- الإعداد: `.github/workflows/ci.yml`؛ يعمل عند إنشاء طلب الدمج أو تحديثه أو إعادة فتحه، بما فيه Draft، وعند الدفع إلى `main`، ويدعم التشغيل اليدوي بعد وصول الملف إلى الفرع الافتراضي.
+- ثلاث حالات منفصلة: `npm test` (يشمل اختبارات Core والصوت وMobile voiceClient)، و`npm run typecheck` (Contract + Core)، و`npm run typecheck -w @ahmed/mobile`.
+- البيئة: Node.js 24، وتثبيت مطابق لـ`package-lock.json` عبر `npm ci`. فشل إحدى الحالات لا يُخفي نتائج الحالات الأخرى؛ الفشل يبقى ظاهرًا في Checks وتُصدر Vitest تنبيهات للأخطاء.
+- لا يحتاج CI أسرارًا أو مفاتيح API حقيقية. المحاكاة البرمجية للصوت لا تثبت نجاح بناء iOS أو المحادثة على جهاز؛ اختبار القبول في `docs/VOICE.md` مستقل.
