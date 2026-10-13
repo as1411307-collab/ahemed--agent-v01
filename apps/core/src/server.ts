@@ -16,6 +16,11 @@ import { conversationResponse, errorResponse, taskResponse } from "./responses.j
 import { Store, type Clock } from "./store.js";
 import { Workspace } from "./workspace.js";
 
+import { LLMService } from "./services/llmService.js";
+import { MemoryService } from "./services/memoryService.js";
+import { agentToolRegistry } from "./services/toolRegistry.js";
+import { Orchestrator } from "./agents/orchestrator.js";
+
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 export interface CoreOptions {
@@ -45,6 +50,11 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
   const workspace = new Workspace(opts.workspaceRoot);
   const agent = new Agent(store, workspace, opts.model, opts.approvalTtlMs ?? APPROVAL_TTL_MS);
   agent.recover();
+
+  // memory DB: separate small sqlite file beside the main DB for session memory
+  const memoryDbFile = opts.dbFile.endsWith(".db") ? opts.dbFile.replace(/\.db$/, ".memory.db") : `${opts.dbFile}.memory.db`;
+  const memoryService = new MemoryService(memoryDbFile);
+  const orchestrator = new Orchestrator(opts.model, memoryService);
 
   const inFlight = new Set<Promise<void>>();
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 1024 * 1024 });
@@ -194,6 +204,39 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     return conversationResponse(store, req.params.conversationId);
   });
 
+  // ---- New: tools and LLM endpoints ----
+  app.get("/v1/tools", async () => ({ tools: agentToolRegistry.listDefinitions() }));
+
+  app.post("/v1/llm/plan", async (req, reply) => {
+    const body = req.body as { prompt?: string; sessionId?: string; userId?: string; context?: string } | undefined;
+    if (!body || typeof body.prompt !== "string" || !body.prompt.trim()) {
+      return reply.code(400).send(errorResponse("BAD_REQUEST", "Missing 'prompt' in body."));
+    }
+    try {
+      const out = await orchestrator.run({ prompt: body.prompt, sessionId: body.sessionId, userId: body.userId, context: body.context });
+      return { plan: out.plan, tools: out.tools, sessionId: out.sessionId };
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send(errorResponse("INTERNAL", "Failed to generate plan."));
+    }
+  });
+
+  app.post("/v1/tools/execute", async (req, reply) => {
+    const body = req.body as { tool_name?: string; arguments?: Record<string, unknown>; sessionId?: string } | undefined;
+    if (!body || typeof body.tool_name !== "string") return reply.code(400).send(errorResponse("BAD_REQUEST", "Missing tool_name."));
+    try {
+      const res = await agentToolRegistry.execute(body.tool_name, body.arguments ?? {});
+      if (body.sessionId) {
+        const text = typeof res.result === "string" ? res.result : JSON.stringify(res.result);
+        memoryService.appendMessage(body.sessionId, "assistant", `Tool ${res.tool} executed: ${text}`, { tool: res.tool });
+      }
+      return res;
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send(errorResponse("INTERNAL", "Tool execution failed."));
+    }
+  });
+
   const drain = async () => {
     while (inFlight.size) await Promise.allSettled([...inFlight]);
   };
@@ -208,6 +251,7 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
       await drain();
       await app.close();
       db.close();
+      memoryService.close();
     },
   };
 }
