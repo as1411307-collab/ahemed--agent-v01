@@ -225,7 +225,7 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     const body = req.body as { tool_name?: string; arguments?: Record<string, unknown>; sessionId?: string } | undefined;
     if (!body || typeof body.tool_name !== "string") return reply.code(400).send(errorResponse("BAD_REQUEST", "Missing tool_name."));
     try {
-      const res = await agentToolRegistry.execute(body.tool_name, body.arguments ?? {});
+      const res = await agentToolRegistry.execute(body.tool_name, body.arguments ?? {}, workspace);
       if (body.sessionId) {
         const text = typeof res.result === "string" ? res.result : JSON.stringify(res.result);
         memoryService.appendMessage(body.sessionId, "assistant", `Tool ${res.tool} executed: ${text}`, { tool: res.tool });
