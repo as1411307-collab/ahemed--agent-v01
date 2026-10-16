@@ -42,21 +42,27 @@ export class MemoryService {
     `);
   }
 
-  ensureSession(sessionId: string, metadata: Record<string, unknown> = {}): string {
+  ensureSession(sessionId: string, metadata?: Record<string, unknown>): string {
     const existing = this.db
       .prepare("SELECT id FROM memory_sessions WHERE id = ?")
       .get(sessionId) as { id: string } | undefined;
 
     if (existing) {
-      this.db
-        .prepare("UPDATE memory_sessions SET updated_at = CURRENT_TIMESTAMP, metadata = ? WHERE id = ?")
-        .run(JSON.stringify(metadata), sessionId);
+      if (metadata === undefined) {
+        this.db
+          .prepare("UPDATE memory_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+          .run(sessionId);
+      } else {
+        this.db
+          .prepare("UPDATE memory_sessions SET updated_at = CURRENT_TIMESTAMP, metadata = ? WHERE id = ?")
+          .run(JSON.stringify(metadata), sessionId);
+      }
       return sessionId;
     }
 
     this.db
       .prepare("INSERT INTO memory_sessions (id, metadata) VALUES (?, ?)")
-      .run(sessionId, JSON.stringify(metadata));
+      .run(sessionId, JSON.stringify(metadata ?? {}));
 
     return sessionId;
   }
