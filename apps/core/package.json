@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/main.ts",
-    "test": "vitest run",
+    "test": "vitest run && npm run test:http-security",
+    "test:http-security": "node --experimental-strip-types --test test/security/*.security.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

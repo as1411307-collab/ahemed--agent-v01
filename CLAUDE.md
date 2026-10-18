@@ -65,5 +65,6 @@
   - `EXPO_PUBLIC_APP_TOKEN` = نفس قيمة `APP_TOKEN`
 - تشغيل التطبيق: `npm run mobile` ثم امسح رمز QR بتطبيق Expo Go (الجوال على نفس الشبكة). بعد تعديل .env أعد تشغيل Expo.
 - الاختبارات: `npm test` (Vitest مع FakeModelClient، بدون مفتاح أو شبكة)
+- اختبارات أمان HTTP المعزولة ضمن `npm test`: ‏`npm run test:http-security -w @ahmed/core` (Node 22.13+؛ محاكاة DNS/HTTP دون اتصالات خارجية).
 - فحص الأنواع: `npm run typecheck` (contract + core)، و`npm run typecheck -w @ahmed/mobile`
 - أول تشغيل للـCore قد يُظهر نافذة Windows Firewall: اسمح لـNode على الشبكات الخاصة (Private) حتى يصل الجوال.

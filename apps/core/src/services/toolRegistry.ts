@@ -1,6 +1,7 @@
 import type { ModelToolDef } from "../model.js";
 import { readFileTool } from "../tools.js";
 import type { Workspace } from "../workspace.js";
+import { publicHttpGet } from "./publicHttpGet.js";
 
 export type ToolExecutionResult = {
   ok: boolean;
@@ -52,8 +53,7 @@ const registry: Record<string, ToolSpec> = {
     },
     executor: async (_ws, args) => {
       const url = typeof args.url === "string" ? args.url : "";
-      const res = await fetch(url);
-      return await res.text();
+      return await publicHttpGet(url);
     },
   },
 };
