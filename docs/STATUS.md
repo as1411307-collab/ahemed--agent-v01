@@ -3,8 +3,9 @@
 
 ## 20 أكتوبر: سكلز التصميم
 - فرع `feat/design-skills-2026-10-20`: فهرس سكلز التصميم والحركة والـ3D والرسم الحي والصوت (`docs/SKILLS.md`، 18 مصدر)، سكربت التثبيت `scripts/install-design-skills.ps1`، سكل `openverse-sounds`، `design-dna` مثبّت في الريبو، ومصادر البوستات في `docs/references/`.
-- الخطوة الجاية على اللابتوب: `git fetch origin` ثم `git checkout feat/design-skills-2026-10-20` ثم `.\scripts\install-design-skills.ps1` ثم `git add .claude skills-lock.json` و`git commit`. (بيئة Claude السحابية سمحت بتثبيت سكل واحد ومنعت الباقي، فالتثبيت يكمل من اللابتوب.)
+- التثبيت تم على GitHub (انظر 21 أكتوبر). على اللابتوب يكفي `git fetch origin` ثم `git checkout feat/design-skills-2026-10-20`.
 - 21 أكتوبر: كل مراجع الشهرين (صور، فيديوهات، ملفات، روابط من 23 سبتمبر إلى 20 أكتوبر) انجمعت في `docs/references/` (الفهرس `docs/references/README.md`): مواصفات غرفة العمليات 27 سبتمبر، مكتبة البرومبتات، الاستخراج الكامل لحزم 13 أكتوبر، مراجع 20 أكتوبر. وانضاف للمثبّت: taste-skill، design-motion-principles، و54 سكل مختارة من MengTo/Skills.
+- 21 أكتوبر (متأخر): أحمد ما عنده اللابتوب، فالتثبيت صار على GitHub نفسه: workflow `install-design-skills.yml` ثبّت كل المصادر (19 مصدر، 140+ سكل) ورفعها على الفرع (كومت `c1a58ac`). بعدها بحث موسّع أضاف 11 مصدراً (cinematic-3d-website، auteur، awwwards-3d، emilkowalski، interface-design، tastemaker، Vercel، webapp-testing…) وأدوات وتجارب في `docs/references/research-2026-10-21.md`؛ الـworkflow يعيد التثبيت تلقائياً عند أي تغيير في السكربت.
 - ما تغيّر أي قرار سابق. اللي تحت هو حالة الكور زي ما كانت.
 
 ## الحالة الحين

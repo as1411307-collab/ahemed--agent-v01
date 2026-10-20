@@ -28,6 +28,21 @@ SOURCES=(
   "livekit/agent-skills"
   "Leonxlnx/taste-skill"
   "kylezantos/design-motion-principles"
+  "gkren22/cinematic-3d-website"
+  "gkren22/procedural-3d-realism"
+  "agiwhitelist/auteur"
+  "tsogjavklann/awwwards-3d"
+  "zyliu0/3d-frontend"
+  "emilkowalski/skills"
+  "Dammyjay93/interface-design"
+  "codeswithroh/tastemaker"
+)
+
+# Selected skills from larger collections (name list after the repo)
+SELECTED=(
+  "vercel-labs/agent-skills|web-design-guidelines react-best-practices react-native-guidelines react-view-transitions composition-patterns"
+  "anthropics/skills|webapp-testing"
+  "sickn33/antigravity-awesome-skills|3d-web-experience fixing-motion-performance"
 )
 
 # MengTo/Skills (MIT): only the skills that fit this project's look (see docs/SKILLS.md)
@@ -45,6 +60,13 @@ OK=(); FAILED=()
 for src in "${SOURCES[@]}"; do
   echo; echo "==> $src"
   if npx --yes skills@latest add "$src" -a claude-code -s '*' -y --copy; then OK+=("$src"); else FAILED+=("$src"); fi
+done
+
+for entry in "${SELECTED[@]}"; do
+  repo="${entry%%|*}"; names="${entry#*|}"
+  echo; echo "==> $repo ($names)"
+  # shellcheck disable=SC2086
+  if npx --yes skills@latest add "$repo" -a claude-code -s $names -y --copy; then OK+=("$repo"); else FAILED+=("$repo"); fi
 done
 
 echo; echo "==> MengTo/Skills (${#MENGTO[@]} selected skills)"

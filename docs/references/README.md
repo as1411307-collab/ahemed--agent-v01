@@ -9,6 +9,7 @@
 | `prompt-library-2026-10-13.html` | 13 أكتوبر | مكتبة برومبتات جاهزة للنسخ (افتحها في المتصفح): ThreeUI ×6، React Bits ×10، طريقة GetLayers + 3 مشاهد، أساليب UI UX Pro Max ×5، motionsize، أوامر تثبيت السكلز |
 | `extraction-2026-10-13.md` | 13 أكتوبر | الاستخراج الكامل لخمس حزم صور وفيديوهات (كلمة كلمة، بدون حذف) مقسّم: تعليمات التطبيق / تعليمات الإيجنت / أخرى — GetLayers، React Bits، Command Deck، كانفس n8n، ClickUp، Nexus، JARVIS OS 2.0 (Jev، Obsidian vault، Whisper+Kokoro)، 8 AI Concepts، n8n، خطوات Sama، Composio، RAG، Hermes Agent، Gabster… |
 | `references-2026-10-20-morning.md` | 20 أكتوبر (الصبح) | خمس ريلز "الإحساس" (ليل أزرق + ضوء ذهبي، هدوء، عمق)، دفعة "الهيكل": Askk AI، Sidebar v2، Seelen UI، Axon 12 وكيل، Cloud Atlas، Vesper، مكتبة Three.js، Duncan، شبكة المزودين؛ Docker Sandboxes؛ ملف 3D generation؛ مشاريع Jarvis مفتوحة المصدر |
+| `research-2026-10-21.md` | 21 أكتوبر | بحث موسّع: سكلز إضافية (cinematic-3d-website، auteur، awwwards-3d، emilkowalski، interface-design، tastemaker، Vercel guidelines، webapp-testing…)، أدوات جاهزة (LiveKit Agents UI، AG-UI، Theatre.js)، أدوات اللوحة الحية (Claude Code Agent Monitor، Langfuse graph، Mission Control، opcode)، وتجارب الناس |
 | `design-skill-sources-2026-10-20.md` | 20 أكتوبر (الليل) | بوست الـ5 سكلز، بوست الـ10 أدوات، Cloud Atlas، prompt-motion، "Claude cooked"، وما انضاف بعد البحث |
 
 ## الخيوط اللي تتكرر في كل المراجع (مستخرجة، مب قرارات جديدة)

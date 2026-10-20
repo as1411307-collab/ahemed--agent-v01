@@ -31,7 +31,22 @@ $sources = @(
   @{ src = "framara/react-flow-skill";            note = "react-flow: the live n8n-style node graph (@xyflow/react) - custom nodes, edges, layout, performance" },
   @{ src = "livekit/agent-skills";                note = "livekit skills x7: building / testing / debugging / operating LiveKit voice agents (skills only, no MCP)" },
   @{ src = "Leonxlnx/taste-skill";                note = "taste-skill: anti AI-slop frontend rules (shape lock, typography, depth) - from the Oct 13 Duncan video" },
-  @{ src = "kylezantos/design-motion-principles"; note = "design-motion-principles: build + audit motion, anti-slop checklist, motion cookbook - from the Oct 13 video" }
+  @{ src = "kylezantos/design-motion-principles"; note = "design-motion-principles: build + audit motion, anti-slop checklist, motion cookbook - from the Oct 13 video" },
+  @{ src = "gkren22/cinematic-3d-website";        note = "cinematic-3d-website: scroll-driven cinematic 3D sites (WebGPU/TSL, Theatre.js, GPU particles, godrays, bloom, film grain, sound design)" },
+  @{ src = "gkren22/procedural-3d-realism";       note = "procedural-3d-realism: shading + lighting recipes, companion of the skill above" },
+  @{ src = "agiwhitelist/auteur";                 note = "auteur: direct a website like a film - art direction lock, slopscan linter, motionqa (Playwright) gate, moodboard/refscout" },
+  @{ src = "tsogjavklann/awwwards-3d";            note = "awwwards-3d: scroll-driven 3D templates (room walkthrough on a spline camera, glass orb, post chain) - Three.js r170 + GSAP + Lenis" },
+  @{ src = "zyliu0/3d-frontend";                  note = "3d-frontend: single-file scroll-driven 3D pages (Three.js + GSAP ScrollTrigger, camera paths)" },
+  @{ src = "emilkowalski/skills";                 note = "emil: 15 animation skills (animate, review/improve animations, animation-performance, apple-design, mobile-native, break-ui, prototype)" },
+  @{ src = "Dammyjay93/interface-design";         note = "interface-design: saves design decisions to .interface-design/system.md so later sessions stay consistent" },
+  @{ src = "codeswithroh/tastemaker";             note = "tastemaker: grounds generated UI in reference images + a taste profile" }
+)
+
+# Selected skills from larger collections
+$selected = @(
+  @{ src = "vercel-labs/agent-skills";            names = @("web-design-guidelines","react-best-practices","react-native-guidelines","react-view-transitions","composition-patterns"); note = "Vercel: 100+ UI rules audit, React/RN performance, view transitions" },
+  @{ src = "anthropics/skills";                   names = @("webapp-testing");  note = "Anthropic: Playwright screenshots + browser logs so Claude checks its own screens" },
+  @{ src = "sickn33/antigravity-awesome-skills";  names = @("3d-web-experience","fixing-motion-performance"); note = "3D web scenes review + motion performance fixes" }
 )
 
 # MengTo/Skills (MIT, 177 skills by the author of ThreeUI) - only the ones that fit this project's look:
@@ -51,6 +66,13 @@ foreach ($s in $sources) {
   Write-Host ""
   Write-Host ("==> " + $s.src + "  (" + $s.note + ")") -ForegroundColor Cyan
   & npx --yes skills@latest add $s.src -a claude-code -s "*" -y --copy
+  if ($LASTEXITCODE -eq 0) { $ok += $s.src } else { $failed += $s.src }
+}
+
+foreach ($s in $selected) {
+  Write-Host ""
+  Write-Host ("==> " + $s.src + "  (" + $s.note + ")") -ForegroundColor Cyan
+  & npx --yes skills@latest add $s.src -a claude-code -s $s.names -y --copy
   if ($LASTEXITCODE -eq 0) { $ok += $s.src } else { $failed += $s.src }
 }
 

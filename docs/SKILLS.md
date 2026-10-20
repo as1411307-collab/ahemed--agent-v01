@@ -6,7 +6,7 @@
 
 ## التثبيت (مرة وحدة على اللابتوب)
 
-`design-dna` موجود في الريبو. الباقي (18 مصدر + 54 سكل مختارة من MengTo/Skills) بأمر واحد من جذر المشروع في PowerShell:
+**الحالة (21 أكتوبر):** كل السكلز مثبّتة في الريبو على فرع `feat/design-skills-2026-10-20` بواسطة GitHub Actions (`.github/workflows/install-design-skills.yml`) — 140+ مجلد في `.claude/skills`. لإعادة التثبيت أو التحديث: زر "Run workflow" في تبويب Actions على GitHub، أو على اللابتوب من جذر المشروع في PowerShell:
 
 ```powershell
 .\scripts\install-design-skills.ps1
@@ -14,7 +14,7 @@
 
 السكربت يثبّت كل مصدر بـ `npx skills add` على مستوى المشروع (مب عام)، ينسخ الملفات بدل الروابط الرمزية عشان Windows، ويسجّل النسخ في `skills-lock.json`. بعدها تُراجع المجلدات الجديدة وتُحفظ: `git add .claude skills-lock.json` ثم commit. التحديث لاحقاً: `npx skills update -p -y`.
 
-ليش ما انحطت الملفات كلها في الريبو من هنا؟ بيئة Claude السحابية سمحت بتثبيت واحد (design-dna) ومنعت الباقي (حماية من نسخ كود خارجي داخل ريبو أحمد)، فالتثبيت يكمل على اللابتوب.
+ليش عبر Actions؟ بيئة Claude السحابية سمحت بتثبيت سكل واحد مباشرة (design-dna) ومنعت الباقي (حماية من نسخ كود خارجي داخل ريبو أحمد)، فالتثبيت يصير على سيرفرات GitHub ويُرفع تلقائياً على الفرع. السكربت `.sh` نفسه يشتغل على Linux/macOS، و`.ps1` على Windows.
 
 ## الترتيب: ركّبهم فوق بعض
 
@@ -55,6 +55,13 @@
 | `design-motion-principles` | [kylezantos/design-motion-principles](https://github.com/kylezantos/design-motion-principles) · MIT | بناء وتدقيق الحركة: قائمة "علامات تصميم الذكاء الاصطناعي" (النبض بلا معنى، منحنيات مختلفة…)، كتاب وصفات للـeasing والظلال وضغطة الزر. (من فيديو Duncan، 13 أكتوبر) | مع `motion-design`: الأول المبادئ، وهذا التدقيق والوصفات الجاهزة. |
 | 54 سكل من `MengTo/Skills` (أمثلة: `no-ai-design-slop`, `audit-ai-design-slop`, `design-first-ui-prompting`, `3d-sky-background`, `3d-sky-rays`, `3d-ultra-realistic-water`, `atmosphere-background`, `dark-glass-clean-layout`, `glass-dark-ui`, `beam-glow-states`, `cinematic-gsap-lenis-motion-system`, `build-threejs-scroll-worlds`, `threejs-landscape`, `threejs-weather`, `thinking-orbs`, `video-to-superprompt`, `html-to-interaction-prompts`, `optimize-web-animations`, `build-game-audio-feedback`, `build-game-camera-controls`…) | [MengTo/Skills](https://github.com/MengTo/Skills) · MIT (مؤلف ThreeUI) | 177 سكل لمواقع ومشاهد 3D وألعاب ويب؛ اخترنا اللي يناسب الشكل: مشاهد ليلية سينمائية، سما وماء وجو، لوحات زجاجية، كرات تفكير، عوالم Three.js، أنظمة حركة، تدقيق ضد الـslop، تحويل فيديو مرجعي إلى برومبت. القائمة الكاملة في `scripts/install-design-skills.ps1`. | `video-to-superprompt` على ريلز أحمد المرجعية أول شي؛ `3d-sky-*` و`atmosphere-background` للمشهد؛ `glass-dark-ui` للوحات؛ `thinking-orbs` لحالة الوكيل؛ `audit-ai-design-slop` قبل كل عرض. |
 
+| `cinematic-3d-website`, `procedural-3d-realism` | [gkren22](https://github.com/gkren22/cinematic-3d-website) · MIT | مواقع سينمائية 3D يقودها السكرول: كاميرا مُخرجة (Theatre.js/GSAP)، جسيمات GPU، godrays وbloom وحبيبات فيلم، صوت طبقي، إنترو، تقليل الحركة؛ ووصفات تظليل وإضاءة واقعية. | أقرب سكل للإحساس المطلوب (ليل، ضوء دافي، عمق). المشهد الأول يبدأ من هنا مع `3d-sky-*`. |
+| `auteur` | [agiwhitelist/auteur](https://github.com/agiwhitelist/auteur) · MIT | يثبّت الاتجاه الفني قبل الكود ويمنع التسليم بـ `slopscan` (قواعد ضد شكل الذكاء الاصطناعي) و`motionqa` (Playwright: إطارات ساقطة وأخطاء). | بوابة جودة آلية قبل كل لقطة شاشة لأحمد. |
+| `awwwards-3d`, `3d-frontend`, `3d-web-experience`, `fixing-motion-performance` | tsogjavklann · zyliu0 · sickn33 · MIT | قوالب 3D جاهزة (غرفة بكاميرا على spline، كرة زجاجية، سلسلة post)، صفحات 3D بملف واحد، مراجعة مشاهد 3D، إصلاح أداء الحركة. | نماذج سريعة ومراجعة بعد البناء. |
+| `emilkowalski/skills` (15) | [emilkowalski/skills](https://github.com/emilkowalski/skills) · MIT | حركة الواجهات من Emil Kowalski: animate، review/improve-animations، animation-performance، apple-design، prototype، mobile-native، break-ui، animate-expo. | كل حركة تُراجع بـ `review-animations`؛ `break-ui` قبل التسليم. |
+| `interface-design`, `tastemaker` | Dammyjay93 · codeswithroh | يحفظ قرارات التصميم في ملف عشان الجلسات تبقى متسقة؛ ويثبّت التوليد على صور أحمد المرجعية وملف ذوقه. | ضد خلط السياق بين المحاولات. الحكم النهائي `ahmed-design-taste`. |
+| `web-design-guidelines`, `react-best-practices`, `react-native-guidelines`, `react-view-transitions`, `composition-patterns`, `webapp-testing` | [vercel-labs/agent-skills](https://github.com/vercel-labs/agent-skills) · [anthropics/skills](https://github.com/anthropics/skills) · MIT | فحص 100+ قاعدة واجهة، أداء React/RN، View Transitions، أنماط التركيب؛ وPlaywright يصوّر ويقرأ سجل المتصفح. | قبل كل تسليم: `web-design-guidelines` ثم `webapp-testing` (نفس روح `show-me-screenshot`). |
+
 السكلز الأقدم في المشروع تبقى وتُستخدم معها: `ahmed-design-taste` (الذوق، يفوز على الكل)، `frontend-design`، `arabic-rtl-ui` (العربي سليم قبل أي شاشة فيها نص)، `show-me-screenshot` (كل تغيير بصري يُعرض صورة)، `decisions-log`، `where-we-stopped`، `agent-spawn-guard`، `session-budget`.
 
 ## المكتبات اللي تقابل هالسكلز (لما تنبنى واجهة ويب)
@@ -67,6 +74,8 @@
 - الحالة والبيانات الحية: `zustand`, بث أحداث (SSE أو WebSocket) من مصدر الوكيل
 - الصوت: `howler` للمؤثرات، و`livekit-client` + `@livekit/components-react` لوضع الصوت لاحقاً
 - مكونات جاهزة (من مراجع 13 أكتوبر): **ThreeUI** `npm install @designcodeio/threeui` + `npx @designcodeio/threeui-cli add <component>` (constellation-field، connectivity-graph، signal-particles، platform-core، diagnostics-panel، thinking-button، uplink-loader، topo-field)؛ **React Bits** `npx shadcn@latest add @react-bits/<Component>-TS-TW` (Lightfall، Dot Grid، Grid Scan، Particles، Faulty Terminal، Prompt Bar، Star Border، Count Up، Decrypted Text، Target Cursor)؛ **thinking-orbs** `npm install thinking-orbs` (9 حالات تفكير، Canvas، تحترم تقليل الحركة)؛ **Lucide** للأيقونات. البرومبتات الجاهزة لكل مكون في `docs/references/prompt-library-2026-10-13.html`.
+- وضع الصوت (لما يجي وقته): **LiveKit Agents UI** — `npx shadcn@latest registry add @agents-ui` ثم `npx shadcn@latest add @agents-ui/all` (AgentControlBar، AgentChatTranscript، ومرئيات صوت Bar/Grid/Radial/Wave/Aura) + تطبيق البداية `livekit-examples/agent-starter-react`.
+- أحداث الوكيل → الواجهة: **AG-UI protocol** (`ag-ui-protocol/ag-ui`) كصيغة أحداث جاهزة (نص، نداء أداة، حالة، موافقة) بدل اختراع صيغة.
 - نقاط بداية جاهزة لو احتجنا كرة صوت/وكيل: `ethanplusai/jarvis`، `dhananjay09892/JARVIS` (Claude Code هو العقل، React + Three.js + GLSL)، `LiveKit agent-starter-react-native` (تفاصيلها في `docs/references/references-2026-10-20-morning.md`).
 - العربي: خط عربي متصل واضح (مثل IBM Plex Sans Arabic أو Noto Naskh Arabic) و`dir="rtl"` مع تبديل (سكل `arabic-rtl-ui`)
 
@@ -77,6 +86,7 @@
 - **سكلز Cloud Atlas الثلاث** (فيديو @ebrahem_bin_essa): ما نُشرت علناً. الفكرة (مذكرة تصير مهمة والوكيل يرجع بالنتيجة) محفوظة في `docs/references/`.
 - **سكل الفيديو السينمائي** (فيديو "Claude cooked"): ما سُمّي في الفيديو؛ أقرب شي علني `remotion-*`، وانضاف.
 - **أدوات جانب الوكيل** (مب سكلز واجهة، مسجّلة في `docs/references/`): n8n (عقدة AI Agent، Send for Human Approval، MCP Server Trigger)، Composio، Docker Sandboxes، Tailscale، Langfuse، خوادم MCP الرسمية لـ Gmail/Calendar/GitHub، Jev (TypeSafe) كمصنّف، Obsidian vault كذاكرة ماركداون، Whisper + Kokoro للصوت المحلي. قاعدة المشروع: لا MCP داخل الريبو حالياً.
+- **مراجع اللوحة الحية ببيانات حقيقية** (مفتوحة المصدر، للدراسة): `hoangsonww/Claude-Code-Agent-Monitor` (hooks → WebSockets، DAG وSankey للوكلاء)، Langfuse trace graph (Aggregated/Expanded)، Mission Control (MeisnerDan)، `winfunc/opcode`. التفاصيل في `docs/references/research-2026-10-21.md`.
 - **أدوات التصميم الخارجية**: Figma MCP (`create_design_system_rules`، `get_design_context`، Code Connect) وHugging Face Spaces للـ3D (TRELLIS.2، Hunyuan3D-2.1، TripoSR) — طريقتها في `docs/references/earlier-2026-09-to-10.md`.
 - **prompt-motion.com**: مب سكل، مكتبة برومبتات حركة جاهزة. طريقتها في `docs/references/design-skill-sources-2026-10-20.md`.
 
