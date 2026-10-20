@@ -1,143 +1,209 @@
-# ثلاثة اقتراحات لعالم NEXUS (21 أكتوبر 2026، 2:46 بالليل) — بدون ترشيح
+# ثلاثة اقتراحات لعالم NEXUS (21 أكتوبر 2026) — النسخة المفصّلة، بدون ترشيح
 
-أحمد طلب: راجعي كل النقاش والحلول وأعطيني ثلاثة اقتراحات مختلفة بالتفاصيل على شكل أكواد، بدون ترشيح أحدها. ثم طلب إعادتها **بدون خيار الكونسولات** (بلايستيشن وغيرها كانت مجرد سؤال). هذا الملف هو النسخة المعدّلة، بنفس العمق لكل واحد. القرار لأحمد. (مرحلة أفكار: ما ندخل قواعد المشروع ولا "هل يُقاد من Claude Code".)
-
-## المشترك بين الثلاثة (الأعصاب لا تتغير مهما كان الجسد)
-
-```yaml
-nervous_system:                      # من وثيقة Settings & Control Center + حصيلة NEXUS + Hermes
-  config: NEXUS CONFIG (json)        # world, agents[], tools[], integrations[], models[], rag[], permissions, scenes[], sounds, camera, events, rules[], presets[]
-  bus: one event stream              # agent.started | tool.called | tool.failed | approval.requested | approval.resolved | cost.updated | mission.completed | config.changed | connection.lost
-  brain: external (Core / Hermes / n8n agent)   # the world never owns keys or tools
-  approval_card: [APPROVE, DENY, EDIT, CHANGE_ROUTE]   # world pauses partially, core state = WAITING
-  kill_switch: always visible        # process.kill for any running task
-  cost_meter: per task + session total + daily cap
-  modes: COMMANDER (world only) / ARCHITECT (world becomes editable)
-  presets: config snapshots          # Research / Investor / Personal / Developer / Creative / Deep Work
-  core_states: [listening, thinking, delegating, waiting, success, warning, speaking]
-  rules: IF event/condition THEN visual/camera/scene   # editable, no code
-  secrets: never in the world; status only (CONNECTED / DISCONNECTED / ERROR)
-  look: deep night blue + one warm gold light, cinematic calm, depth; reduce-motion switch
-```
+أحمد طلب ثلاثة اقتراحات مختلفة بالتفاصيل على شكل أكواد، بدون ترشيح أحدها، وبدون خيار الكونسولات (كان مجرد سؤال). ثم طلب التفاصيل كاملة. هذا الملف هو النسخة المفصّلة: لكل اقتراح وش تشوف أول ما تفتح، كيف يبيّن الوكيل وأحداثه، الإعدادات ووضع المهندس، الصوت، الأصول، الربط بالعقل، الجهاز والتكلفة، المخاطر، ثم الكود. القرار لأحمد. (مرحلة أفكار: ما ندخل قواعد المشروع ولا "هل يُقاد من Claude Code".)
 
 ---
 
-## الاقتراح A — عالم ويب سينمائي (WebGPU / Three.js)
+## المشترك بين الثلاثة: الأعصاب (لا تتغير مهما كان الجسد)
 
-العالم يُرسم بتقنيات الويب الحديثة داخل غلاف سطح مكتب، ونفس البناء يشتغل في أي متصفح: اللابتوب، التلفزيون، الجوال.
-
-```yaml
-proposal: A — Cinematic Web World
-world:
-  renderer: Three.js (WebGPU, WebGL2 fallback) + React Three Fiber
-  scene_day1: cabin / room walkthrough on a spline camera, curved glass, sea of clouds outside,
-              real-time sun position (UAE clock), volumetric fog, godrays, bloom, film grain
-  assets: concept images -> TRELLIS.2 / Hunyuan3D -> Blender cleanup -> GLB (Draco/KTX2); HDRI lighting
-  particles: GPU particles (dust, embers) that react to events
-  live_graph: React Flow (@xyflow/react) nodes anchored in 3D (drei <Html>) or in-scene meshes;
-              dashed pulse on edges (stroke-dashoffset), reverse for rollback, paused while waiting
-  core: orb shader with the 7 states + personality presets (speed, glow, camera behaviour)
-  fleet_view: zoom-out shows core + agents on a circle, lines carry each agent's colour (currentColor)
-shell: Tauri on Windows (laptop, or laptop on the TV with a gamepad) ; same build in any browser (phone for status + approvals)
-brain_link: WebSocket to Core / Hermes (events_poll bridge) ; AG-UI style event JSON
-voice: LiveKit Agents UI (Aura visualizer) later ; mic from laptop or phone
-audio: Web Audio tones (click/success/fail) + Openverse/Kenney ambient layers via Howler
-settings: side panels (RTL) editing NEXUS CONFIG ; live preview = hot-swap on config.changed
-hardware: integrated GPU is enough ; 3 quality tiers ; 60 fps target on a mid laptop
-cost: 0 at runtime
-ceiling: stylised-realistic ; photoreal like Unreal needs heavy shader work
-```
-
-```ts
-// world/rules.ts — the world is config-driven; events arrive over WebSocket
-type Rule = { on: string; do: string[] };            // e.g. { on: "approval.requested", do: ["core.state=waiting", "tint=#F0C75E", "camera.freeze"] }
-const rules: Rule[] = config.rules;                   // editable from Architect mode
-const ws = new WebSocket(config.brain.url);
-ws.onmessage = ({ data }) => {
-  const ev = JSON.parse(data);                        // { type, agent, task, cost, ts }
-  rules.filter(r => r.on === ev.type).forEach(r => r.do.forEach(a => apply(a, ev)));
-};
-```
+- **ملف كونفق واحد `nexus.config.json`** هو مصدر الحقيقة: الوكلاء، الأدوات، التكاملات، الموديلات، المشاهد، القواعد، الصلاحيات، الأصوات، الكاميرا، الـPresets. العالم يقرأه ويرسم، والإعدادات تعدّله، وما فيه قيمة مكتوبة داخل الكود.
+- **بث أحداث واحد** من العقل للعالم: `agent.started`، `agent.thinking`، `tool.called`، `tool.result`، `tool.failed`، `approval.requested`، `approval.resolved`، `cost.updated`، `mission.completed`، `connection.lost`، `config.changed`. كل حدث فيه `agent`، `task`، `cost`، `ts`. ومن العالم للعقل: رسالة شات، قرار موافقة، إيقاف، تغيير كونفق.
+- **العقل برا العالم** (Core أو Hermes أو وكيل n8n): المفاتيح والأدوات والذاكرة عنده؛ العالم يعرض ويرسل القرارات فقط، ويعرض حالة الاتصال بس (CONNECTED / DISCONNECTED / ERROR).
+- **بطاقة الموافقة بأربع أزرار**: موافق / أرفض / عدّل / غيّر المسار. وقت الطلب يبهت العالم شوي، النواة تدخل حالة الانتظار (كهرماني)، والكاميرا تتجمد، وما ينفّذ شي قبل قرارك.
+- **زر الإيقاف الفوري** دايماً ظاهر على الكونسول: يرسل `kill` للعملية الحالية أو لكل شي.
+- **عداد التكلفة**: المهمة الحالية + مجموع الجلسة + سقف يومي يطلع تحذيراً.
+- **وضعان**: Commander (العالم والتفاعل بس) وArchitect (نفس العالم يصير قابلاً للتعديل: تسحب وكيلاً، توصل، تغيّر قاعدة، تفتح لوحات الكونفق).
+- **Presets** = لقطات كاملة من الكونفق باسم (Research، Investor، Personal، Developer، Creative، Deep Work)، ونفس الآلية تعطي Undo/Redo وتاريخ النسخ.
+- **سبع حالات للنواة**: يستمع، يفكر، يفوّض، ينتظر، نجح، تحذير، يتكلم. و**شخصية النواة** (هادي/تحليلي/تنفيذي/استكشافي/إبداعي) = مجموعة قيم للسرعة والتوهج وسلوك الكاميرا.
+- **قواعد**: IF حدث أو حالة THEN شكل/كاميرا/مشهد، تتعدل من الإعدادات بدون كود (مثلاً: أكثر من 3 وكلاء نشطين → الكاميرا ترجع لورا؛ مهمة بحث → مشهد البحث).
+- **الإحساس**: ليل أزرق عميق بطبقات وضباب، مصدر ضوء دافي واحد (ذهبي/كهرماني)، هدوء سينمائي، وخيار تقليل الحركة من أول يوم.
 
 ---
 
-## الاقتراح B — عالم محرك ألعاب على جهازك (Unreal 5 + Fab؛ نفس المخطط يصلح لـUnity أو Godot)
+## الاقتراح A — عالم ويب سينمائي (WebGPU / Three.js في غلاف سطح مكتب)
 
-العالم بأعلى واقعية ممكنة محلياً: إضاءة عالمية، أصول Megascans، كاميرا سينمائية من محرك أفلام، وصفحة التحكم من برا تغيّر العالم الحي.
+**الفكرة بجملة:** العالم كله مبني بتقنيات الويب ثلاثية الأبعاد الحديثة داخل تطبيق سطح مكتب صغير، ونفس البناء يفتح في أي متصفح (الجوال للحالة والموافقات، والتلفزيون لو وصّلت اللابتوب).
 
-```yaml
-proposal: B — Engine World on your machine
-world:
-  engine: Unreal Engine 5 (Lumen GI, Nanite, Niagara, Sequencer, MetaSounds)   # or Unity HDRP / Godot 4 with the same structure
-  scene_day1: photoreal cabin + outside (clouds, far mountains, city lights), sun from real clock
-  assets: Fab (Megascans, free + paid) + generated GLB from concept images
-  live_graph: in-world holograms (Niagara ribbons as edges, pulses as particles) + UMG panels for text
-  core: Niagara / material orb with 7 states ; personality = parameter sets
-control_from_outside:
-  remote_control_api: HTTP + WebSocket (port 30010) — Architect Control web page sets properties live
-  blueprints: event -> visual rules as a DataTable (editable, no code)
-brain_link: WebSocket plugin to Core / Hermes ; or inbound via Remote Control
-voice: LiveKit (web overlay) later ; controller + mic
-audio: MetaSounds layers (ambient / UI / agent voice), each with its own volume
-packaging: Windows build -> laptop (or laptop on the TV with a gamepad)
-hardware: dedicated GPU (RTX 3060 class or better) ; 3 quality tiers ; big project (tens of GB)
-cost: engine free for this use ; some Fab assets paid
-ceiling: highest realism ; heaviest build and hardware
-```
+**وش تشوف أول ما تفتح:** سواد عميق، شعار هندسي محايد يتنفس، خط تقدم ذهبي رفيع، ثم تلاشي ثانيتين وتصحى داخل المقصورة: زجاج منحني كبير، برا بحر غيوم وجبال بعيدة وأضواء مدينة، والشمس في مكانها الحقيقي حسب ساعة الجهاز وإحداثيات الإمارات (بالليل تدفأ إضاءة المقصورة وتطلع النجوم). ضباب حجمي خفيف، أشعة ضوء، bloom ناعم، حبيبات فيلم خفيفة، وغبار دافي يطفو ببطء. الكاميرا من عين الجالس في الكرسي مع ميلان خفيف يتبع الماوس، وبعجلة الماوس تطلع على مسار منحني لمنظر الأسطول من برا وترجع.
 
-```json
-// EventRules.json  (DataTable imported into Unreal; same file drives Unity/Godot variant)
+**كيف يبيّن الوكيل وأحداثه:**
+- الشاشة الرئيسية قدام الكرسي هي الشات (HTML حقيقي مثبّت على سطح ثلاثي الأبعاد، فالعربي والـRTL سليمان)، وأول شي تقدر تكتب فيه.
+- النواة كرة شيدر بسبع حالات: نبض بطيء وهي تستمع، أسرع وأكبر وهي تفكر، كهرماني وهي تنتظر، أخضر وقت النجاح، أحمر هادي وقت التحذير، وتتنفس مع الصوت وهي تتكلم.
+- كل وكيل مربوط كيان صغير حول النواة بلونه، والخط بينهم متقطع يتحرك باستمرار؛ لما تمر مهمة يصير الخط أعرض ويتوهج بلون الوكيل، والنبضة تمشي عليه وترجع بالنتيجة، تنعكس للتراجع، وتتوقف وقت الانتظار.
+- جدار هولوغرامي جانبي = ملخص المهام الحي (سجل التفكير: سطر لكل خطوة بالوقت)، وطرفية صغيرة مصنّفة بالألوان (نداء، رموز، رسالة بين وكيلين، نظام) تصغر لشريط بضغطة.
+- في منظر الأسطول، الرسم الحي بأسلوب n8n: العقد والحواف من React Flow مثبّتة داخل المشهد، تقدر تعيد تشغيل مهمة قديمة خطوة خطوة.
+- بطاقة الموافقة تفتح جنب الوكيل المعني بأربعة أزرار؛ زر الإيقاف وعداد التكلفة على الكونسول الجانبي.
+
+**الإعدادات ووضع المهندس:** لوحة تنسحب من اليمين فوق المشهد (مب صفحة)، فيها أقسام الكونفق: عام، العالم والمشهد، النواة، الوكلاء، التكاملات، الأدوات، الموديلات، الذاكرة، الصلاحيات، القواعد، الأصوات. أي تعديل يُطبّق على المشهد فوراً (معاينة حية) ولا يُعتمد إلا بزر Apply؛ Undo/Redo وPresets من لقطات الكونفق. في وضع المهندس تسحب الوكلاء وتوصلهم بالماوس داخل المشهد نفسه.
+
+**الصوت:** نقرات وتأكيدات مولّدة بـWeb Audio بدون ملفات (نغمات ناعمة دافية)، وطبقات جو (همس محرك، جو المقصورة) من Openverse/Kenney عبر Howler، لكل طبقة مستوى في الإعدادات.
+
+**الأصول (من وين الواقعية):** صور مفهوم للمقصورة والكونسول والكيانات → مجسمات بـTRELLIS.2 أو Hunyuan3D → تنظيف في Blender → GLB مضغوط (Draco/KTX2)، وخامات PBR، وإضاءة من HDRI حقيقي. السما والغيوم إجرائية بشيدر.
+
+**الربط بالعقل:** WebSocket واحد للكور (أو جسر يقرأ `events_poll` من Hermes ويبثّها). أول بناء يشتغل على مشغّل أحداث وهمي يعيد تشغيل جلسات JSON مسجلة بنفس الصيغة، ثم ينبدل المصدر بالحقيقي بدون لمس المشاهد.
+
+**الجهاز والتكلفة:** كرت مدمج يكفي، ثلاث درجات جودة (عدد الجسيمات، المؤثرات)، هدف 60 إطار. تكلفة التشغيل صفر.
+
+**المخاطر:** سقف الواقعية أقل من محرك ألعاب كامل (واقعي مُنمّط مب فوتوريالي)، والإبهار يحتاج شغل شيدرات، وتوافق WebGPU يختلف بين المتصفحات (فيه تراجع لـWebGL2).
+
+```jsonc
+// nexus.config.json (excerpt) — the whole world reads from here
 {
-  "approval.requested": [
-    { "set": "NexusCore.State", "to": "Waiting" },
-    { "set": "PostProcess.ColorTint", "to": "#F0C75E" },
-    { "camera": "freeze" }
+  "world": {
+    "scene": "cabin-clouds",
+    "clock": { "mode": "real", "lat": 25.2, "lon": 55.3 },
+    "fog": 0.35, "bloom": 0.6, "grain": 0.15, "particles": "dust-warm", "reduceMotion": false
+  },
+  "theme": { "bg": "#0A0A0B", "accent": "#D4AF37", "accent2": "#F0C75E", "warn": "#FF5A5A" },
+  "core": { "state": "listening", "personality": "calm" },
+  "agents": [
+    { "id": "research", "name": "Research", "color": "#5AC8FF", "model": "claude", "tools": ["web_search", "files"], "position": [2.2, 0.4, -1.6] },
+    { "id": "automation", "name": "n8n", "color": "#F0C75E", "kind": "gateway", "position": [-2.0, 0.2, -1.8] }
   ],
-  "tool.failed":   [ { "pulse": "edge", "color": "#FF5A5A", "direction": "reverse" } ],
-  "agent.started": [ { "glow": "agent" }, { "camera": "focus", "target": "agent" } ]
+  "rules": [
+    { "on": "approval.requested", "do": ["core.state=waiting", "world.tint=#F0C75E", "camera.freeze", "card.open"] },
+    { "on": "tool.failed",        "do": ["edge.pulse(reverse,#FF5A5A)", "core.state=warning"] },
+    { "on": "agent.started",      "do": ["agent.glow", "camera.focus(agent)"] },
+    { "when": "activeAgents>3",   "do": ["camera.pullback"] }
+  ],
+  "presets": { "research": { "world.scene": "cabin-clouds", "agents.enabled": ["research", "files"] } }
 }
 ```
 
+```tsx
+// World.tsx — scene skeleton (React Three Fiber)
+<Canvas gl={{ powerPreference: "high-performance" }}>
+  <Sky clock={config.world.clock} />                 {/* sun position from real time */}
+  <Cabin glb="/assets/cabin.glb" />
+  <CoreOrb state={core.state} personality={core.personality} />
+  {agents.map(a => <AgentNode key={a.id} {...a} active={active.has(a.id)} />)}
+  <Edges from="core" to={agents} pulses={pulses} />  {/* dashed lines, offset animated */}
+  <Html transform position={[0, 1.1, -1.4]}><ChatScreen dir="rtl" /></Html>
+  <Html position={[1.6, 0.9, -1.0]}><ThinkingLog entries={log} /></Html>
+  <PostFX fog={config.world.fog} bloom={config.world.bloom} grain={config.world.grain} />
+</Canvas>
+```
+
+```ts
+// useAgentEvents.ts — events in, decisions out
+const ws = new WebSocket(config.brain.url);           // ws://laptop:8787/events  (or the Hermes bridge)
+ws.onmessage = ({ data }) => {
+  const ev = JSON.parse(data);                        // { type, agent, task, cost, ts }
+  for (const r of config.rules) if (r.on === ev.type) r.do.forEach(action => apply(action, ev));
+};
+export const decide = (taskId: string, choice: "approve" | "deny" | "edit" | "reroute", edit?: string) =>
+  ws.send(JSON.stringify({ type: "approval.decision", taskId, choice, edit }));
+export const kill = (taskId?: string) => ws.send(JSON.stringify({ type: "kill", taskId }));
+```
+
+---
+
+## الاقتراح B — عالم محرك ألعاب على جهازك (Unreal Engine 5 + Fab؛ نفس المخطط يصلح لـUnity أو Godot)
+
+**الفكرة بجملة:** أعلى واقعية ممكنة محلياً: إضاءة عالمية حقيقية، أصول Megascans، كاميرا من محرك أفلام، والعالم يتعدل حياً من صفحة تحكم برا المحرك.
+
+**وش تشوف أول ما تفتح:** لقطة افتتاحية من Sequencer (4 ثواني): الكاميرا تنزلق من برا الزجاج إلى الكرسي، مع الشعار وخط التقدم فوقها. المقصورة فوتوريالية: جلد داكن ومعدن مطفي وخطوط ذهب من Megascans، زجاج بانكسار حقيقي، برا غيوم حجمية (Volumetric Cloud + Sky Atmosphere) وجبال بعيدة ومدينة أضواء، والشمس من ساعة الجهاز (Sun Position). Lumen للإضاءة غير المباشرة، Nanite للتفاصيل، ومجلد معالجة لاحقة: bloom، تعريض تلقائي، تدرج ألوان دافي/بارد، vignette، عمق ميدان خفيف.
+
+**كيف يبيّن الوكيل وأحداثه:**
+- النواة نظام Niagara + مادة مضيئة، حالاتها السبع قيم في Material Parameter Collection، فتغيير الحالة سطر واحد.
+- الوكلاء كيانات صغيرة بمواد مضيئة بلونها، والحواف شرائط Niagara، والنبضات جسيمات تمشي على spline بين النواة والوكيل (اتجاه معكوس للتراجع، تتوقف وقت الانتظار).
+- الشات على شاشة داخل المشهد (Widget Component)، والسجل والطرفية لوحات UMG خفيفة على الأطراف. النص العربي يُفحص أول شي (تشكيل الحروف والاتجاه).
+- بطاقة الموافقة Widget يطلع جنب الوكيل بأربعة أزرار، وزر الإيقاف والعداد على الكونسول.
+- قواعد الحدث → الشكل في DataTable تُستورد من JSON، وBlueprint واحد يقرأ الصف ويطبّق الإجراءات؛ ما فيه قاعدة مكتوبة داخل الكود.
+
+**الإعدادات ووضع المهندس:** داخل اللعبة وضع المهندس يخلي الوكلاء قابلين للسحب والتوصيل. ومن برا، صفحة ويب "Architect Control" تكلم المحرك عبر **Remote Control API** (HTTP لتغيير الخصائص، WebSocket للبث الحي): شدة الشمس، كثافة الضباب، ألوان الوكلاء، المشهد الحالي… كل خاصية مكشوفة في Remote Control Preset. التعديل يُحفظ في الكونفق عند العقل ويُعاد بثه كـ`config.changed` عشان يبقى مصدر الحقيقة واحداً.
+
+**الصوت:** MetaSounds بثلاث طبقات (جو، واجهة، صوت الوكيل) ومزج لكل طبقة مستوى في الإعدادات.
+
+**الأصول:** Fab (Megascans فيها كمية كبيرة مجانية + مدفوع)، والمجسمات المولّدة (TRELLIS/Hunyuan3D) بعد تنظيف Blender تُستورد كـGLB/FBX.
+
+**الربط بالعقل:** إضافة WebSocket داخل المحرك (الوحدة المدمجة) تتصل بالكور أو Hermes؛ كل حدث JSON يتحول لـEvent Dispatcher في Blueprint. نفس المشغّل الوهمي للجلسات المسجلة أول.
+
+**التعبئة والجهاز:** بناء ويندوز يشتغل على اللابتوب (أو على التلفزيون بيد تحكم عبر Enhanced Input). يحتاج كرت شاشة منفصلاً (فئة RTX 3060 أو أعلى) ومساحة عشرات الجيجا، مع ثلاث درجات Scalability (Lumen يطفي في الأدنى).
+
+**التكلفة:** المحرك مجاني لهذا الاستخدام، وبعض أصول Fab مدفوعة.
+
+**المخاطر:** أثقل مشروع (ترجمة، أحجام، دورة تعديل أطول)، يحتاج جهازاً قوياً، منحنى تعلم للمحرك، والعربي داخل UMG يحتاج فحصاً مبكراً.
+
+```json
+// EventRules.json — imported as a DataTable; one Blueprint reads the row for ev.type
+{
+  "approval.requested": [
+    { "set": "MPC.Nexus.CoreState", "to": 3 },
+    { "set": "PostProcess.ColorTint", "to": "#F0C75E" },
+    { "camera": "freeze" },
+    { "widget": "ApprovalCard", "anchor": "agent" }
+  ],
+  "tool.failed":   [ { "niagara": "EdgePulse", "param": "Direction", "to": -1 }, { "set": "MPC.Nexus.CoreState", "to": 5 } ],
+  "agent.started": [ { "material": "Agent.Emissive", "to": 3.0 }, { "camera": "focus", "target": "agent", "blend": 0.8 } ],
+  "cost.updated":  [ { "widget": "CostMeter", "text": "{task} / {session}" } ]
+}
+```
+
+```text
+Blueprint (BP_NexusDirector):
+  OnWebSocketMessage(json)
+    -> ev = ParseJson(json)
+    -> row = DataTable.FindRow(EventRules, ev.type)
+    -> ForEach action in row: ExecuteAction(action, ev)   // SetMPC / SetPostProcess / CameraFreeze / SpawnWidget / NiagaraParam
+  ApprovalCard.OnButton(choice) -> WebSocket.Send({ type: "approval.decision", taskId, choice })
+  KillButton.OnClick           -> WebSocket.Send({ type: "kill" })
+```
+
 ```bash
-# Architect Control page -> live world (Remote Control API)
+# Architect Control page -> live world (Remote Control API, port 30010)
 curl -X PUT http://localhost:30010/remote/object/property \
   -H "Content-Type: application/json" \
-  -d '{"objectPath":"/Game/Nexus/Maps/Cabin.Cabin:PersistentLevel.Sun_1","propertyName":"Intensity","propertyValue":{"Intensity":2.0}}'
+  -d '{"objectPath":"/Game/Nexus/Maps/Cabin.Cabin:PersistentLevel.Sun_1.LightComponent0",
+       "propertyName":"Intensity","propertyValue":{"Intensity":2.0}}'
 ```
 
 ---
 
 ## الاقتراح C — عالم في السحابة يُبث لأي شاشة (Pixel Streaming)
 
-نفس عالم المحرك، لكن يُرسم على كرت شاشة مستأجر في السحابة ويوصلك كفيديو تفاعلي لأي جهاز: اللابتوب، الجوال، التلفزيون. العقل والعالم في نفس المكان، فما فيه تأخير بينهما.
+**الفكرة بجملة:** نفس عالم المحرك من B، لكن يُرسم على كرت شاشة مستأجر في السحابة ويوصلك كفيديو تفاعلي عبر المتصفح: اللابتوب، الجوال، التلفزيون. العقل والعالم في نفس المكان، فما فيه تأخير بينهما، وجهازك ما يشتغل عليه شي.
+
+**وش تشوف أول ما تفتح:** تفتح رابطاً. أول مرة في اليوم ينتظر العالم دقيقة تقريباً يصحى (أو لقطة دافية جاهزة فينفتح فوراً)، وبعدها نفس المشهد الفوتوريالي من B يوصل كفيديو 1080p أو 4K حسب الإنترنت، والماوس واللمس ويد التحكم ترجع للسحابة في نفس القناة. على الجوال إما نفس العالم أو صفحة خفيفة فيها الحالة والموافقات والإيقاف.
+
+**كيف يبيّن الوكيل وأحداثه:** نفس B بالضبط (النواة، الوكلاء، النبضات، السجل، بطاقة الموافقة، الإيقاف، العداد)، لأن العالم هو نفسه، بس مكانه السحابة.
+
+**الإعدادات ووضع المهندس:** صفحة Architect Control الويب تكلم خدمات السحابة: Remote Control للمحرك + خدمة كونفق صغيرة تحفظ `nexus.config.json` وتبث `config.changed`.
+
+**العقل والملفات:** الكور وHermes وn8n على نفس الجهاز السحابي (أو جهاز صغير دائم التشغيل للعقل، والـGPU يشتغل عند الطلب فقط). ملفاتك تبقى على اللابتوب وتوصلها عبر نفق خاص (Tailscale) أو مجلد متزامن، أو تخلي الكور نفسه على اللابتوب ونفق الأحداث للسحابة.
+
+**الصوت والصوت الحي:** الصوت داخل البث، والصوت الحي عبر LiveKit Cloud من أي جهاز فيه مايك.
+
+**الجهاز والتكلفة:** ولا شي محلي. جهاز GPU سحابي بالساعة (تقريباً $0.5–2/ساعة حسب الكرت والمزود) يتوقف لحاله بعد 15 دقيقة خمول، وجهاز صغير للعقل بشهرية بسيطة. مناطق سحابية قريبة من الإمارات موجودة عند المزودين الكبار، فالتأخير 30–80 ملي ثانية على إنترنت جيد.
+
+**الخصوصية:** المفاتيح في مخزن أسرار السحابة، البث مشفّر، والملفات محلية افتراضياً.
+
+**المخاطر:** الضغط يلطّف التفاصيل الدقيقة، يحتاج إنترنت مستقراً، وقت إقلاع، فاتورة شهرية، وصيانة (تحديثات الجهاز السحابي).
 
 ```yaml
-proposal: C — Cloud World, streamed everywhere
-world: Unreal 5 world (as in B) rendered on a cloud GPU VM ; Pixel Streaming (WebRTC) -> any browser
-brain: Core + Hermes + n8n on the same VM (or a small always-on VM) ; local event bus (no network hop)
-files: stay on the laptop ; reached through a private tunnel (Tailscale) or synced folder
-voice: LiveKit Cloud ; mic from whatever device is open
-settings: Architect Control web page -> VM (Remote Control + config service)
-devices: laptop, phone (status + approvals), TV — all just screens
-hardware: nothing local
-cost: GPU VM only while the world is open (~$0.5–2 / hour, auto-stop when idle) + small VM for the brain
-latency: 30–80 ms on good internet (UAE fine) ; video compression softens fine detail
-start_time: ~1 minute to boot the world (or keep a warm snapshot)
-privacy: brain and world in the cloud ; keys in the VM's secret store, never in the stream
-ceiling: same realism as B without owning a GPU ; monthly bill instead
-```
-
-```yaml
-# stack.yaml — one VM, four services
+# stack.yaml — one GPU VM (or brain VM + on-demand GPU VM)
 services:
-  brain:      { image: nexus-core, env_file: .env, ports: ["8787"] }        # Core API + permissions + audit
-  agent:      { image: hermes-agent, command: "hermes mcp serve" }           # events_poll / permissions_respond
-  world:      { image: ue5-pixelstreaming, gpu: true, ports: ["80", "8888"] }# renders + streams
-  signaling:  { image: pixelstreaming-signalling }                          # WebRTC handshake
+  brain:      { image: nexus-core,              env_file: .env, ports: ["8787"] }   # Core API + permissions + audit log
+  agent:      { image: hermes-agent,            command: "hermes mcp serve" }        # events_poll / permissions_respond
+  config:     { image: nexus-config-service,    volumes: ["./nexus.config.json:/data/config.json"] }
+  world:      { image: ue5-nexus-pixelstreaming, gpu: true, ports: ["8888"] }        # renders + encodes
+  signaling:  { image: pixelstreaming-signalling, ports: ["80", "443"] }             # WebRTC handshake
+  turn:       { image: coturn }                                                      # NAT traversal
   voice:      { provider: livekit-cloud }
 policy:
   auto_stop_after_idle: 15m
   warm_snapshot: true
+  regions_preferred: ["me-central", "me-south"]
+```
+
+```html
+<!-- any screen: laptop, phone, TV browser -->
+<iframe src="https://nexus.example.ae/world?quality=auto" allow="microphone; gamepad; fullscreen"></iframe>
+<script>
+  // light client for the phone: status + approvals only
+  const es = new EventSource("https://nexus.example.ae/events");
+  es.onmessage = e => render(JSON.parse(e.data));          // approval.requested -> show 4 buttons
+</script>
 ```
 
 ---
@@ -146,10 +212,10 @@ policy:
 
 | | A ويب | B محرك على جهازك | C سحابة مبثوثة |
 |---|---|---|---|
-| الواقعية | متوسطة إلى عالية | الأعلى | الأعلى |
+| الواقعية | متوسطة إلى عالية (مُنمّطة) | الأعلى (فوتوريالي) | الأعلى (فوتوريالي) |
 | الجهاز المطلوب | أي لابتوب | كرت شاشة قوي | ولا شي |
-| التكلفة الشهرية | 0 | 0 | ساعات GPU |
-| يشتغل على الجوال/التلفزيون | نعم (متصفح) | ويندوز (اللابتوب، أو على التلفزيون) | نعم (أي متصفح) |
+| التكلفة الشهرية | 0 | 0 (بعض الأصول مدفوعة) | ساعات GPU + جهاز صغير |
+| الجوال/التلفزيون | نعم (متصفح) | ويندوز (اللابتوب أو على التلفزيون) | نعم (أي متصفح) |
 | التحكم الحي من برا | WebSocket + كونفق | Remote Control API | Remote Control عبر السحابة |
 | الوقت للمشهد الأول | الأقصر | الأطول | متوسط (+ إعداد السحابة) |
-| المخاطر | سقف الواقعية | ثقل المشروع والجهاز | التأخير والفاتورة والخصوصية |
+| المخاطر | سقف الواقعية | الثقل والجهاز | التأخير والفاتورة والخصوصية |
