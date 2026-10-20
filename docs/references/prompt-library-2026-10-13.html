@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>برومبتات غرفة العمليات</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one dark reference page, RTL headings with LTR prompt blocks; a sticky index on top, sections stacked, every prompt gets a copy button. */
+:root{color-scheme:dark;
+  --bg:#0a0908;--surface:#121009;--surface-2:#1a1711;--line:rgba(201,162,74,.22);--line-2:rgba(255,255,255,.08);
+  --fg:#f1eadb;--muted:#9a9280;--accent:#c9a24a;--accent-2:#f3dd92;--ok:#8fd4a0;--warn:#e8b64f;
+  --font-ui:'IBM Plex Sans Arabic',system-ui,sans-serif;--font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace}
+html{box-sizing:border-box}*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:15px;line-height:1.7}
+.page{direction:rtl;max-width:880px;margin:0 auto;padding-inline:16px;padding-block:28px 60px}
+h1{font-size:24px;margin:0 0 6px;font-weight:600}
+.lead{color:var(--muted);margin:0 0 18px;max-width:65ch}
+.notes{border:1px solid var(--line-2);border-radius:12px;padding:12px 14px;margin-bottom:22px;font-size:13.5px;color:var(--muted);background:var(--surface)}
+.notes b{color:var(--fg);font-weight:600}
+nav.idx{position:sticky;top:0;z-index:5;background:linear-gradient(var(--bg),rgba(10,9,8,.92));backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:10px 0;margin:0 0 14px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--line-2)}
+nav.idx a{font-size:12.5px;color:var(--fg);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:5px 11px;background:var(--surface)}
+nav.idx a:hover{border-color:var(--accent)}
+section{margin:30px 0 0}
+h2{font-size:19px;margin:0 0 4px;font-weight:600;color:var(--accent-2)}
+.src{font-size:13px;color:var(--muted);margin:0 0 14px;max-width:70ch}
+.src a{color:var(--accent-2)}
+.card{border:1px solid var(--line-2);border-radius:14px;background:var(--surface);margin:0 0 14px;overflow:hidden}
+.card header{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line-2)}
+.card h3{margin:0;font-size:15px;font-weight:600;flex:1;min-width:0}
+.card .use{font-size:12.5px;color:var(--muted);padding:10px 14px 0}
+.tag{font-size:11px;color:var(--accent-2);border:1px solid var(--line);border-radius:999px;padding:2px 8px;white-space:nowrap}
+.tag.mine{color:var(--ok);border-color:rgba(143,212,160,.35)}
+.copy{appearance:none;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);font:inherit;font-size:12.5px;padding:6px 12px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.copy:hover{border-color:var(--accent)}.copy:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.copy.done{color:var(--ok);border-color:rgba(143,212,160,.5)}
+pre{direction:ltr;text-align:left;margin:0;padding:14px;font-family:var(--font-mono);font-size:12.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;color:#e8e2d2;background:#0d0b08;max-height:520px;overflow:auto;scrollbar-width:thin}
+@media (max-width:560px){pre{font-size:12px}}
+</style>
+
+</head>
+<body>
+<div class="page">
+  <h1>برومبتات غرفة العمليات</h1>
+  <p class="lead">برومبتات جاهزة للنسخ، مستخرجة من المواقع اللي في المراجع، مرتبة حسب المصدر ومعدّلة على تطبيق الإيجنت (أسود + ذهبي، RTL، تلفون). كل بلوك له زر نسخ.</p>
+  <div class="notes">
+    <b>ملاحظات قبل ما تبدأ:</b>
+    <br>• <b>ThreeUI</b>: الكود مفتوح المصدر (MIT)، والبرومبت هنا بنفس صيغة زر "Copy Prompt" في موقعهم.
+    <br>• <b>React Bits</b>: مجاني ومفتوح المصدر، والتثبيت بأمر واحد. البرومبت = أمر التثبيت + الإعدادات.
+    <br>• <b>GetLayers</b>: برومبتاتهم مدفوعة (Premium) وما تنسخ بدون حساب. اللي هنا هو <b>طريقتهم</b> في كتابة البرومبت، وكتبت عليها برومبتات مشاهد خاصة بتطبيقك (معلّمة بـ "مكتوب على طريقتهم").
+    <br>• <b>motionsize.ai</b>: الموقع ما يفتح أصلاً (الدومين ما يشتغل). حطيت البرومبت اللي ظهر في الفيديو نفسه.
+    <br>• n8n وClickUp ما فيهم برومبتات، هم مراجع شكل بس.
+  </div>
+
+  <nav class="idx">
+    <a href="#threeui">ThreeUI</a><a href="#reactbits">React Bits</a><a href="#getlayers">GetLayers (طريقة + مشاهد)</a><a href="#uipro">UI UX Pro Max</a><a href="#motionsize">motionsize</a><a href="#skills">تثبيت السكلز والـ MCP</a>
+  </nav>
+
+  <!-- ================= THREEUI ================= -->
+  <section id="threeui">
+    <h2>ThreeUI</h2>
+    <p class="src">مكونات Three.js وشيدرز من Meng To. المصدر: <a href="https://github.com/MengTo/threeui">github.com/MengTo/threeui</a> · الحزمة: <code>@designcodeio/threeui</code>. الصيغة أدناه هي نفس صيغة زر Copy Prompt عندهم: "نفّذ من المصدر الحقيقي، لا تعيد بناءه من الصورة".</p>
+
+    <div class="card">
+      <header><h3>خلفية اللوحة: Connectivity Graph</h3><span class="tag">Backgrounds</span><button type="button" class="copy">نسخ</button></header>
+      <p class="use">خلفية شبكة عقد متصلة تتحرك خلف لوحة المسار.</p>
+<pre># Integrate &lt;ConstellationField /&gt; from ThreeUI using its exact source
+
+You are working in an existing application. Implement this component from the exact source linked below. Do not recreate it from the preview, screenshot, description, or filename.
+
+Component: `ConstellationField`
+Variant: **Connectivity Graph** (`connectivity-graph`)
+Runtime: Canvas 2D + Raw WebGL
+
+Reference brief:
+A connectivity-graph canvas with animated node links. Part of the Constellation Field family (particle networks, gateways, interface lines, defense traces, topographic fields).
+
+## Current configured usage
+
+```tsx
+import { ConstellationField } from "@designcodeio/threeui";
+import "@designcodeio/threeui/style.css";
+
+export function BoardBackdrop() {
+  return (
+    &lt;div className="shader-frame"&gt;
+      &lt;ConstellationField
+        variant="connectivity-graph"
+        mode="dark"
+        speed={0.8}
+        size={0.35}
+        length={1.5}
+        density={0.9}
+        opacity={0.8}
+        hue={40}
+        saturation={0.9}
+        brightness={0.9}
+      /&gt;
+    &lt;/div&gt;
+  );
+}
+```
+
+## Source
+- npm: `npm install @designcodeio/threeui`
+- Canonical HTML (exact source): github.com/MengTo/threeui → src/shaders/neuform-isolated/sources/connectivity-graph.html
+- No binary assets are required.
+
+## Rules for this app
+- Mount it as the full-bleed layer behind the operations board (position absolute, inset 0, z-index 0, pointer-events none).
+- Dark mode only. Tint it toward the app accent (gold #c9a24a) with hue/saturation/brightness; never add new colors.
+- Pause the animation loop when document.hidden is true; render one static frame under prefers-reduced-motion.
+- Keep the node graph UI above it fully legible: the backdrop must never exceed ~0.8 opacity behind text.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>أرضية ثلاثية الأبعاد: Topo Field</h3><span class="tag">Backgrounds</span><button type="button" class="copy">نسخ</button></header>
+      <p class="use">خطوط طبوغرافية تتنفس، بديل أو مكمّل للأرضية الشبكية الحالية.</p>
+<pre># Integrate &lt;ConstellationField /&gt; from ThreeUI using its exact source
+
+You are working in an existing application. Implement this component from the exact source linked below. Do not recreate it from the preview, screenshot, description, or filename.
+
+Component: `ConstellationField`
+Variant: **Topo Field** (`topo-field`)
+Runtime: Canvas 2D + Raw WebGL
+
+Reference brief:
+Ultra-thin topographic contour lines generated from simplex noise that drift slowly, with a soft radial fade. Reads as a living terrain map.
+
+## Current configured usage
+
+```tsx
+import { ConstellationField } from "@designcodeio/threeui";
+import "@designcodeio/threeui/style.css";
+
+export function Terrain() {
+  return (
+    &lt;div className="shader-frame"&gt;
+      &lt;ConstellationField variant="topo-field" mode="dark" speed={0.6} size={1} length={1} density={1} opacity={0.7} hue={40} saturation={0.8} brightness={0.9} /&gt;
+    &lt;/div&gt;
+  );
+}
+```
+
+## Source
+- Canonical HTML: github.com/MengTo/threeui → src/shaders/neuform-isolated/sources/topo-field.html
+- Props available on all variants: mode (dark|light), speed, size, strokeWidth, length, density, opacity, palette.
+
+## Rules for this app
+- Sit it under the 3D node board; the node cards stay on top with their own shadows.
+- Drive `speed` from agent state: idle 0.6, running 1.4, waiting 0.3, stopped 0.
+- One continuous background animation only; do not add a second ambient effect on the same screen.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>جسيمات الإشارة: Signal Particles</h3><span class="tag">Backgrounds · Three.js</span><button type="button" class="copy">نسخ</button></header>
+      <p class="use">جسيمات تمشي كإشارات؛ تنفع كطبقة "بيانات تتحرك" أثناء شغل الإيجنت.</p>
+<pre># Integrate &lt;PredictiveArcCanvas /&gt; from ThreeUI using its exact source
+
+You are working in an existing application. Implement this component from the exact source linked below. Do not recreate it from the preview, screenshot, description, or filename.
+
+Component: `PredictiveArcCanvas`
+Variant: **Signal Particles** (`signal-particles`)
+Runtime: Canvas 2D + Raw WebGL + Three.js r128
+
+Reference brief:
+Eight animated arc, signal, ribbon, void and halftone scenes in one family; this variant streams signal particles along arcs.
+
+## Current configured usage
+
+```tsx
+import { PredictiveArcCanvas } from "@designcodeio/threeui";
+import "@designcodeio/threeui/style.css";
+
+export function SignalLayer({ active }: { active: boolean }) {
+  return (
+    &lt;div className="shader-frame" style={{ opacity: active ? 1 : 0.35, transition: "opacity .6s" }}&gt;
+      &lt;PredictiveArcCanvas variant="signal-particles" mode="dark" /&gt;
+    &lt;/div&gt;
+  );
+}
+```
+
+## Source
+- Canonical HTML: github.com/MengTo/threeui → src/shaders/neuform-isolated/sources/signal-particles.html
+
+## Rules for this app
+- Show it only while the agent is executing a tool call; fade it out when idle or waiting for approval.
+- Recolor to the active theme accent; keep the particle count below 400 on mobile.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>رسم تشخيصي للعقد: Diagnostics Panel</h3><span class="tag">UI Elements</span><button type="button" class="copy">نسخ</button></header>
+      <p class="use">رسم "عقد مكعبة" أو "طبقات" ينفع لبطاقة تفاصيل العقدة أو شاشة الذاكرة/الأدوات.</p>
+<pre># Integrate &lt;DiagnosticsPanel /&gt; from ThreeUI using its exact source
+
+You are working in an existing application. Implement this component from the exact source linked below. Do not recreate it from the preview, screenshot, description, or filename.
+
+Component: `DiagnosticsPanel`
+Variant: **Nodes** (`nodes`)   (other variants: `layers`, `flow`)
+Runtime: Canvas 2D
+
+Reference brief:
+Three diagnostic illustration variants — layered planes, node cubes, and a flowing mesh — each isolated without page chrome or copy.
+
+## Current configured usage
+
+```tsx
+import { DiagnosticsPanel } from "@designcodeio/threeui";
+import "@designcodeio/threeui/style.css";
+
+export function NodeDetailArt() {
+  return &lt;div className="shader-frame" style={{ height: 160 }}&gt;&lt;DiagnosticsPanel variant="nodes" /&gt;&lt;/div&gt;;
+}
+```
+
+## Source
+- Canonical HTML: github.com/MengTo/threeui → src/shaders/neuform-isolated/sources/diagnostics-panel.html
+
+## Rules for this app
+- Use `nodes` inside the side panel "Models / Integrations" tab as the header art, 160px tall, accent-tinted.
+- Use `layers` for the Memory section and `flow` for the Tools section so each section has its own picture.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>زر "يفكر": Thinking Button</h3><span class="tag">Buttons</span><button type="button" class="copy">نسخ</button></header>
+      <p class="use">زر شيدر يتنفس وهو يفكر؛ ينفع كزر الإرسال وهو ينتظر رد الإيجنت.</p>
+<pre># Integrate &lt;ShaderButtons /&gt; from ThreeUI using its exact source
+
+You are working in an existing application. Implement this component from the exact source linked below. Do not recreate it from the preview, screenshot, description, or filename.
+
+Component: `ShaderButtons`
+Variant: **Thinking Button** (`thinking-button`)   (family: ignition, induction, plasma, tactile, thinking)
+Runtime: Raw WebGL + Canvas 2D + CSS
+
+Reference brief:
+Six authored shader and canvas button treatments collected into one interactive family; `thinking-button` shows a soft, breathing "thinking" state inside the button.
+
+## Current configured usage
+
+```tsx
+import { ShaderButtons } from "@designcodeio/threeui";
+import "@designcodeio/threeui/style.css";
+
+export function SendButton({ thinking }: { thinking: boolean }) {
+  return &lt;ShaderButtons variant="thinking-button" label={thinking ? "يفكر…" : "أرسل"} /&gt;;
+}
+```
+
+## Source
+- Canonical HTML: github.com/MengTo/threeui → src/shaders/neuform-isolated/sources/thinking-button.html
+
+## Rules for this app
+- Replace the composer's send button with this; keep the emergency stop button as a plain, always-readable control (no shader on stop).
+- Keep the label in Arabic, RTL, 13px; the button height stays 46px to match the input.
+- Reduced motion: fall back to a static gold button.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>شاشة الإقلاع: Uplink Loader</h3><span class="tag">CSS</span><button type="button" class="copy">نسخ</button></header>
+      <p class="use">لودر سينمائي بتقدم متدرج وقراءات نيون وأقواس تقنية؛ بديل للمقدمة الحالية.</p>
+<pre># Integrate &lt;UplinkLoader /&gt; from ThreeUI using its exact source
+
+You are working in an existing application. Implement this component from the exact source linked below. Do not recreate it from the preview, screenshot, description, or filename.
+
+Component: `UplinkLoader`
+Runtime: DOM + CSS + JavaScript
+
+Reference brief:
+A cinematic secure-uplink loader with stepped progress, illuminated telemetry ticks, neon readouts, technical corner markers, mirrored side rails, scanlines, and procedural grain.
+
+## Current configured usage
+
+```tsx
+import { UplinkLoader } from "@designcodeio/threeui";
+import "@designcodeio/threeui/style.css";
+
+export function Boot() {
+  return &lt;UplinkLoader /&gt;;
+}
+```
+
+## Source
+- Canonical HTML: github.com/MengTo/threeui → src/shaders/uplink-loader/uplink-loader.html
+
+## Rules for this app
+- Use it as the boot screen for at most 2.5 seconds, then cross-fade into the operations room.
+- Replace its copy with: "AHMED AGENT" / "غرفة العمليات" / "تأمين الاتصال…"; keep the readouts in Latin monospace.
+- Skip it entirely under prefers-reduced-motion.</pre>
+    </div>
+  </section>
+
+  <!-- ================= REACT BITS ================= -->
+  <section id="reactbits">
+    <h2>React Bits</h2>
+    <p class="src">مكتبة مجانية مفتوحة المصدر. التثبيت: <code>npx shadcn@latest add https://reactbits.dev/r/&lt;Component&gt;-&lt;JS|TS&gt;-&lt;CSS|TW&gt;</code>. المكونات تعتمد على gsap / motion / three / ogl، ثبّت الاعتمادات قبل الاستخدام. الإعدادات الكاملة لـ Lightfall من صفحتهم؛ الباقي من وصفهم الرسمي.</p>
+
+    <div class="card">
+      <header><h3>خلفية Lightfall (مطر الضوء)</h3><span class="tag">Backgrounds</span><button type="button" class="copy">نسخ</button></header>
+<pre>Add the React Bits "Lightfall" background to this project.
+Docs: https://reactbits.dev/backgrounds/lightfall
+Description: streaks of light falling down a curved tunnel, bending around the cursor and stretching into warp trails on hold.
+
+Install (TypeScript + Tailwind):
+npx shadcn@latest add https://reactbits.dev/r/Lightfall-TS-TW
+Check and install its dependencies first (React Bits backgrounds use ogl/three).
+
+Configure it for a black + gold agent app:
+&lt;Lightfall
+  colors={['#f3dd92', '#c9a24a', '#8a6a1f']}
+  backgroundColor="#17130a"
+  speed={0.25}
+  streakCount={3}
+  streakWidth={0.8}
+  streakLength={1.2}
+  density={0.6}
+  twinkle={0.25}
+  glow={0.9}
+  backgroundGlow={0.08}
+  headGlow={0.6}
+  depth={0.6}
+  bloom={0.35}
+  zoom={3}
+  mouseInteraction
+  mouseStrength={0.4}
+  mouseRadius={0.45}
+  mouseDampening={0.15}
+  lens={0.5}
+  holdToWarp={false}
+  intro
+  fade={0.25}
+  dpr={2}
+/&gt;
+
+Rules: full-bleed behind the chat sheet only (not behind the node board); respect prefers-reduced-motion by passing paused; cap dpr at 2 on mobile.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>شبكة نقاط حية (شكل n8n): Dot Grid</h3><span class="tag">Backgrounds</span><button type="button" class="copy">نسخ</button></header>
+<pre>Add the React Bits "Dot Grid" background as the canvas behind my workflow board.
+Docs: https://reactbits.dev/backgrounds/dot-grid
+Description: a springy dot grid that the cursor flicks and drags through like jelly, with click shockwaves.
+
+Install: npx shadcn@latest add https://reactbits.dev/r/DotGrid-TS-TW
+
+Configure: dot color rgba(201,162,74,0.35), active/glow color #f3dd92, gap 22px, dot size 2px on mobile, shockwave on click enabled, return-to-rest spring short (no bounce).
+Rules: it must look like an automation canvas (regular dot matrix like n8n), not a decorative effect; keep it under the nodes and edges; disable the cursor physics under prefers-reduced-motion.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>غرفة شبكية بمسح ضوئي: Grid Scan (ثيم HUD)</h3><span class="tag">Backgrounds</span><button type="button" class="copy">نسخ</button></header>
+<pre>Add the React Bits "Grid Scan" background for the HUD theme only.
+Docs: https://reactbits.dev/backgrounds/grid-scan
+Description: a 3D grid room swept by a scanning light that follows your view.
+
+Install: npx shadcn@latest add https://reactbits.dev/r/GridScan-TS-TW
+
+Configure: grid color rgba(53,214,255,0.14), scan color #35d6ff, scan period ~4s, perspective matching the board tilt (about 12°).
+Rules: mount only when theme === "hud"; the scan is the single continuous motion allowed in that theme; pause when hidden.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>حقل جسيمات 3D: Particles</h3><span class="tag">Backgrounds</span><button type="button" class="copy">نسخ</button></header>
+<pre>Add the React Bits "Particles" background as the ambient dust layer.
+Docs: https://reactbits.dev/backgrounds/particles
+Description: a drifting 3D field of particles with glow, twinkle, constellation lines and cursor interaction.
+
+Install: npx shadcn@latest add https://reactbits.dev/r/Particles-TS-TW
+
+Configure: particle colors ['#f3dd92','#c9a24a'], count 120 (mobile) / 260 (desktop), constellation lines off, twinkle on, drift speed low, cursor interaction on (desktop only).
+Rules: additive glow, never white; opacity 0.6 behind the board; reduced motion → render once and stop.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>طرفية CRT: Faulty Terminal (ثيم HUD / سجل التفاصيل)</h3><span class="tag">Backgrounds</span><button type="button" class="copy">نسخ</button></header>
+<pre>Add the React Bits "Faulty Terminal" background inside the side panel's "Details" tab (HUD theme).
+Docs: https://reactbits.dev/backgrounds/faulty-terminal
+Description: a flickering CRT terminal of glowing glyphs, with phosphor trails under the cursor and glitches on click.
+
+Install: npx shadcn@latest add https://reactbits.dev/r/FaultyTerminal-TS-TW
+
+Configure: glyph color #35d6ff at 0.35 opacity, scanlines subtle (≤0.12), glitch amplitude small, flicker off under prefers-reduced-motion.
+Rules: it sits behind the log list at low opacity; log text must keep 4.5:1 contrast.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>شريط الكتابة للإيجنت: Prompt Bar</h3><span class="tag">Micro</span><button type="button" class="copy">نسخ</button></header>
+<pre>Replace my chat composer with the React Bits "Prompt Bar".
+Docs: https://reactbits.dev/micro/prompt-bar
+Description: chat composer with @ sources, / commands, a model picker, dictation and attachments.
+
+Install: npx shadcn@latest add https://reactbits.dev/r/PromptBar-TS-TW
+
+Configure: RTL, Arabic placeholder "اكتب مهمة للإيجنت…", model picker listing Claude / ChatGPT / Gemini / Kimi (the agent's connected models), / commands: /stop, /replay, /trust, @ sources: files and recent tasks, attachments on, dictation on (Arabic).
+Rules: keep the emergency stop as a separate round button outside the bar; glass surface, gold focus ring, 46px height; submit on Enter, newline on Shift+Enter.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>إطار نجمة حول بطاقة الموافقة: Star Border</h3><span class="tag">Animations</span><button type="button" class="copy">نسخ</button></header>
+<pre>Wrap the approval card with the React Bits "Star Border".
+Docs: https://reactbits.dev/animations/star-border
+Description: a twinkling star that travels the exact outline of any button, pill or card, trailing light and stardust.
+
+Install: npx shadcn@latest add https://reactbits.dev/r/StarBorder-TS-TW
+
+Configure: star color #e8b64f (amber = waiting for the user), speed slow (~6s per lap), trail length medium.
+Rules: it runs ONLY while an approval is pending; it stops the moment the user answers. No other element on the screen may use a traveling-light border.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>عداد التكلفة: Count Up</h3><span class="tag">Text Animations</span><button type="button" class="copy">نسخ</button></header>
+<pre>Use the React Bits "Count Up" for the token and AED counters in the top bar.
+Docs: https://reactbits.dev/text-animations/count-up
+Description: animated number counter supporting formatting and decimals.
+
+Install: npx shadcn@latest add https://reactbits.dev/r/CountUp-TS-TW
+
+Configure: tokens with thousands separator (en-US), AED with 2 decimals, duration 0.5s, ease-out, tabular-nums, direction ltr inside an RTL bar.
+Rules: animate only on value change; never loop; under prefers-reduced-motion set the value instantly.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>نص الحالة يتفكك ويتجمع: Decrypted Text</h3><span class="tag">Text Animations</span><button type="button" class="copy">نسخ</button></header>
+<pre>Use the React Bits "Decrypted Text" for the status line (e.g. "يبحث عن الرحلات…") in the HUD theme.
+Docs: https://reactbits.dev/text-animations/decrypted-text
+Description: hacker-style decryption cycling random glyphs until resolving to real text.
+
+Install: npx shadcn@latest add https://reactbits.dev/r/DecryptedText-TS-TW
+
+Configure: Arabic glyph set for scrambling, speed fast (≤350ms total), run once per status change, sequential reveal from the right (RTL).
+Rules: only on status text; headings and body never animate on mount.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>مؤشر تصويب للعقد: Target Cursor (سطح المكتب فقط)</h3><span class="tag">Animations</span><button type="button" class="copy">نسخ</button></header>
+<pre>Add the React Bits "Target Cursor" on desktop so the cursor snaps brackets around nodes on the board.
+Docs: https://reactbits.dev/animations/target-cursor
+Description: a reticle cursor whose corner brackets snap around targets, matching their shape.
+
+Install: npx shadcn@latest add https://reactbits.dev/r/TargetCursor-TS-TW
+
+Configure: targets = .node and .btn, bracket color accent, spin off, snap duration 150ms with expo-out easing.
+Rules: desktop pointer only (disable on touch); hide when the side panel is open.</pre>
+    </div>
+  </section>
+
+  <!-- ================= GETLAYERS ================= -->
+  <section id="getlayers">
+    <h2>GetLayers: الطريقة + مشاهد مكتوبة عليها</h2>
+    <p class="src">برومبتات GetLayers نفسها مدفوعة. اللي يفيد منهم هو <b>الهيكل</b>: البرومبت يحمل "نية" الهندسة والإضاءة والكاميرا والمواد بالقيم اللي ضبطتها، وبعدين تعدّل عنصر واحد كل مرة. المشاهد الثلاثة تحت مكتوبة على نفس الهيكل لتطبيقك.</p>
+
+    <div class="card">
+      <header><h3>طريقة GetLayers (كما هي في موقعهم)</h3><span class="tag">Method</span><button type="button" class="copy">نسخ</button></header>
+<pre>How GetLayers prompts work (from getlayers.ai):
+1. Launch the live preview: the real three.js scene runs sandboxed; everything past this point responds to you, not a video.
+2. Dial in the look: swatches recolour, sliders move the parameters that matter, randomize finds the accident you wouldn't have typed. Restart re-mounts with your current values when you change something structural (counts, geometry, density).
+3. Drop a UI on top (optional): put a real page layout over the scene. "Copy prompt + UI" returns both the scene and the section built over it, in one instruction.
+4. Copy the prompt: it carries geometry, lighting, camera and material intent, with the values you dialled in, not the ones it shipped with.
+5. Paste it, then iterate one element at a time: geometry, then lighting, then camera, then materials. Describe the behaviour you want in plain words ("the camera drifts closer as you scroll, particles lag behind it"). Scroll and hover motion usually takes several passes; that is normal for a scene.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>مشهد 1: أرض ذهبية سلكية تتنفس (اللي في النموذج الحالي)</h3><span class="tag mine">مكتوب على طريقتهم</span><button type="button" class="copy">نسخ</button></header>
+<pre>Build a three.js scene (r128+, plain JS, no React) as a full-bleed transparent canvas behind a mobile UI.
+
+GEOMETRY
+- PlaneGeometry 30×30 with 110×110 segments, rotated flat (rotateX -90°), translated to y=-1.2, z=-3.
+- Vertex displacement in the vertex shader: h = sin(x*0.55+t*0.6)*0.22 + sin(z*0.7-t*0.45)*0.22 + sin((x+z)*0.3+t*0.35)*0.35 + sin(x*1.3-z*0.9+t*0.9)*0.07.
+- Ripple term from the centre: + sin(d*2.2 - t*3.2) * exp(-d*0.26) * uRipple * 0.9, where d = length(xz).
+- Render the same geometry twice: as a wireframe mesh and as points (vertex dots).
+
+LIGHTING / FOG
+- No lights. Additive blending, depthWrite off.
+- Fog by alpha: vFog = clamp((-viewZ - 4) / 17, 0, 1); line alpha = (1-vFog)*0.5*(0.5+0.5*smoothstep(-0.3,0.7,h)); dot alpha = (1-vFog)*softCircle*(0.55+0.45*smoothstep(-0.3,0.7,h)).
+
+CAMERA
+- PerspectiveCamera fov 50, position (0, 2.4, 6.8), lookAt (0, -0.2, -1).
+- Pointer parallax: camera.x = px*0.7, camera.y = 2.4 - py*0.35, eased 6% per frame.
+
+MATERIALS
+- ShaderMaterial, uColor = app accent (#c9a24a gold; #35d6ff for the HUD theme; #ff7a2f for the ember theme), lerped over ~0.5s when the theme changes.
+- Point size (2.8 - vFog*2.0) * devicePixelRatio.
+
+BEHAVIOUR (ties to the agent state)
+- idle: speed 1, ripple 0, accent color.
+- running: speed 1.7, ripple 1.
+- waiting for approval: speed 0.6, ripple 0.25, color = warn (#e8b64f).
+- stopped: speed 0.35, ripple 0, color = danger (#ff4d57).
+- done: speed 0.9, color = ok (#8fd4a0) for ~2.5s, then back to accent.
+- Pause the loop when document.hidden; one static frame under prefers-reduced-motion; fall back to a 2D particle canvas if WebGL is unavailable.</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>مشهد 2: القلب الحي (حلقة برتقالية + نواة جسيمات)</h3><span class="tag mine">مكتوب على طريقتهم</span><button type="button" class="copy">نسخ</button></header>
+<pre>Build a three.js "living core" (r128+, plain JS) sized 180×180 CSS px, transparent background, to sit at the centre of a command-deck screen.
+
+GEOMETRY
+- Nucleus: Points, 2,400 particles in a Gaussian cloud of radius 0.35; each particle orbits slowly on its own axis (seed-based) and breathes ±8% with sin(t*1.2).
+- Ring: TorusGeometry radius 0.75, tube 0.025, 180×16 segments, in the XY plane, with a slow wobble: rotation.x = 0.35 + sin(t*0.4)*0.08.
+- Ribbons (active state only): 5 TubeGeometry ribbons along CatmullRom curves that spiral out from the ring to radius 1.6 and fade; regenerate their control points every 3s with an eased crossfade.
+
+LIGHTING
+- Additive blending everywhere; no scene lights. A PointLight is not needed; brightness comes from alpha stacking.
+- Soft bloom via a second, larger, lower-alpha copy of the nucleus (radius ×1.6, alpha ×0.25).
+
+CAMERA
+- PerspectiveCamera fov 35 at (0, 0, 3.2) looking at origin; gentle idle drift of ±2° on Y over 9s.
+
+MATERIALS
+- Nucleus color #35d6ff (cyan), ring color #ff9a3c (orange), ribbons #b36bff (violet) fading to transparent.
+- Particle size 2.2 px × DPR with a soft round sprite (discard outside r=0.5, smoothstep edge).
+
+BEHAVIOUR
+- idle: nucleus breathes, ring wobbles, no ribbons.
+- listening / speaking: ribbons appear over 600ms, nucleus brightness +40%, ring speed ×2.
+- waiting for approval: ring turns amber (#e8b64f) and pulses once per 1.3s.
+- stopped: everything freezes except a slow fade of the ribbons; ring turns red (#ff4d57).
+- Expose a tiny API: core.setState("idle"|"active"|"wait"|"stop"), core.setColors({nucleus, ring, ribbon}).</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>مشهد 3: نفق ضوء للمقدمة</h3><span class="tag mine">مكتوب على طريقتهم</span><button type="button" class="copy">نسخ</button></header>
+<pre>Build a 2.5-second three.js intro (r128+, plain JS) for a mobile app boot screen, then hand off to the UI.
+
+GEOMETRY
+- A CylinderGeometry tunnel (radius 1.2, length 40, 48 radial × 1 segment, open ends, BackSide) along -Z.
+- 600 streak particles as thin BoxGeometry (0.01×0.01×0.6) instanced along the tunnel wall, random angle and depth.
+
+LIGHTING
+- Additive blending; streak alpha falls with depth (fog-by-alpha from z=-4 to z=-36).
+
+CAMERA
+- PerspectiveCamera fov 70 at (0,0,0) looking down -Z; moves forward at 18 units/s for the first 1.6s, then eases to a stop (expo-out) over 0.9s while the app emblem fades in at the centre.
+
+MATERIALS
+- Streak color = app accent (#c9a24a), tunnel wall a faint wireframe at 0.08 alpha.
+
+BEHAVIOUR
+- Plays once per cold start only; skipped entirely under prefers-reduced-motion and when the app resumes from background.
+- Ends by dispatching "intro:done" so the UI can start its own run.</pre>
+    </div>
+  </section>
+
+  <!-- ================= UI UX PRO MAX ================= -->
+  <section id="uipro">
+    <h2>UI UX Pro Max: برومبتات الأساليب</h2>
+    <p class="src">هذي نصوص "AI Prompt Keywords" كما هي من قاعدة بياناتهم (styles.csv)، للأساليب اللي تناسب التطبيق. المصدر: <a href="https://github.com/nextlevelbuilder/ui-ux-pro-max-skill">ui-ux-pro-max-skill</a>.</p>
+
+    <div class="card">
+      <header><h3>HUD / Sci-Fi FUI</h3><span class="tag">Style</span><button type="button" class="copy">نسخ</button></header>
+<pre>Design a futuristic HUD (Heads Up Display) or FUI. Use: thin lines (1px), neon cyan/blue on black, technical markers, decorative brackets, data visualization, monospaced tech fonts, glowing elements, transparency.
+Variables: --hud-color: #00FFFF, --bg-color: rgba(0,10,20,0.9), --line-width: 1px, --glow: 0 0 5px, --font: monospace
+Checklist: fine lines 1px · neon glow text/borders · monospaced font · dark/transparent background · decorative tech markers · holographic feel</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>Modern Dark (Cinema Mobile)</h3><span class="tag">Style · Mobile</span><button type="button" class="copy">نسخ</button></header>
+<pre>Design a Modern Dark (Cinema Mobile) mobile interface using dark mode, cinematic, ambient light, glassmorphism, deep black, indigo, glow, blur. Prioritize clear hierarchy, safe areas, touch targets, visible focus, and reduced-motion alternatives.
+Effects: Expo.out Bezier(0.16,1,0.3,1) easing; spring modals (damping 20, stiffness 90); haptic-linked press; animated ambient light blobs (slow oscillation); BlurView glass headers/nav (intensity 20); press scale 0.97 → 1.0; avoid pure #000000 (OLED smear).
+Checklist: no pure #000000 backgrounds · LinearGradient base screen · animated ambient blobs · blur on tab bar and headers · borderRadius 16 on all cards · haptic on every pressable · Bezier(0.16,1,0.3,1) easing · accent glow behind primary button · no solid grey borders (rgba only) · bottom sheets replace all modals</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>Spatial UI (visionOS)</h3><span class="tag">Style</span><button type="button" class="copy">نسخ</button></header>
+<pre>Design a VisionOS-style spatial interface. Use: frosted glass panels, depth layers, translucent backgrounds (15-30% opacity), vibrant colors for active states, gaze-hover effects, floating windows, immersive feel.
+CSS: backdrop-filter: blur(40px) saturate(180%); background: rgba(255,255,255,0.2); border-radius: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); transform: scale on focus; depth via shadows
+Checklist: glass effect visible · depth layers clear · hover states defined · colors vibrant on active · floating feel achieved · contrast maintained</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>Cyberpunk Mobile HUD</h3><span class="tag">Style · Mobile</span><button type="button" class="copy">نسخ</button></header>
+<pre>Design a Cyberpunk Mobile HUD mobile interface using cyberpunk, neon, glitch, chamfered, orbitron, jetbrains, scanlines, crt. Prioritize clear hierarchy, safe areas, touch targets, visible focus, and reduced-motion alternatives.
+Effects: deep void background with neon radiance, chamfered 45° corners, scanline overlay, CRT flicker, glitch animations (translateX ±2), neon pulses around buttons, HUD corner brackets, terminal-prompt text inputs, blurred holographic panels.
+Variables: --bg: #0A0A0F, --card: #12121A, --fg: #E0E0E0, --accent: #00FF88, --accent2: #FF00FF, --accent3: #00D4FF, --border: #2A2A3A, --destructive: #FF3366, --radius: 0px, --font-heading: Orbitron, --font-body: JetBrains Mono</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>Glassmorphism</h3><span class="tag">Style</span><button type="button" class="copy">نسخ</button></header>
+<pre>Design a glassmorphic interface with frosted glass effect. Use backdrop blur (10-20px), translucent overlays (rgba 10-30% opacity), vibrant background colors, subtle borders, light source reflection, layered depth. Perfect for modern overlays and cards.
+CSS: backdrop-filter: blur(15px); background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); z-index layering for depth
+Checklist: backdrop-filter blur 10-20px · translucent white 15-30% · subtle 1px light border · vibrant background verified · text contrast 4.5:1 checked</pre>
+    </div>
+
+    <div class="card">
+      <header><h3>أمر توليد نظام تصميم كامل</h3><span class="tag">CLI</span><button type="button" class="copy">نسخ</button></header>
+<pre>npm install -g ui-ux-pro-max-cli && uipro init --ai claude
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "AI agent command center dark glassmorphism futuristic HUD mobile app" --design-system -p "Agent Ops Room" -f markdown
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "HUD sci-fi" --domain style
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "arabic geometric modern" --domain typography</pre>
+    </div>
+  </section>
+
+  <!-- ================= MOTIONSIZE ================= -->
+  <section id="motionsize">
+    <h2>motionsize.ai (من الفيديو)</h2>
+    <p class="src">الدومين ما يشتغل. هذا البرومبت كما ظهر على الشاشة في الفيديو، للسجل.</p>
+    <div class="card">
+      <header><h3>موقع 3D بخلفيات فيديو مولّدة</h3><span class="tag">Video prompt</span><button type="button" class="copy">نسخ</button></header>
+<pre>Give me a website for around 4 to 5 sections with video scrolling background. It should kind of look 3D, and also let's animate the image, so write a prompt for this, and then using, let's say, Kling 3.0, create animation for this video. Create 3 separate videos, around 4 seconds each, and then after 3 sections, there is another video, then there is another, if you know what I mean. But make it interesting using this image as a base.
+
+Note from the video: the "Ultra" plan burns credits fast.</pre>
+    </div>
+  </section>
+
+  <!-- ================= SKILLS / MCP ================= -->
+  <section id="skills">
+    <h2>تثبيت السكلز والـ MCP</h2>
+    <p class="src">أوامر التثبيت للأدوات اللي ظهرت في الفيديوهات، عشان Claude Code يستخدمها مباشرة.</p>
+    <div class="card">
+      <header><h3>أوامر التثبيت</h3><span class="tag">Install</span><button type="button" class="copy">نسخ</button></header>
+<pre># Taste Skill (anti-slop frontend rules)
+npx skills add Leonxlnx/taste-skill --skill design-taste-frontend
+
+# Design Motion Principles (build + audit motion)
+npx skills add kylezantos/design-motion-principles
+
+# UI UX Pro Max (styles, palettes, fonts database)
+npm install -g ui-ux-pro-max-cli && uipro init --ai claude
+
+# ThreeUI (React package of Three.js components, MIT)
+npm install @designcodeio/threeui
+# ThreeUI MCP: https://threeui.com/mcp
+
+# React Bits (free registry) — install any component:
+npx shadcn@latest add https://reactbits.dev/r/&lt;Component&gt;-TS-TW
+# React Bits MCP: https://reactbits.dev/get-started/mcp
+
+# GetLayers MCP (prompts are premium): https://getlayers.ai/mcp</pre>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  document.querySelectorAll('.card').forEach(function(card){
+    var btn=card.querySelector('.copy'),pre=card.querySelector('pre');
+    if(!btn||!pre)return;
+    btn.addEventListener('click',function(){
+      var text=pre.innerText;
+      function ok(){btn.textContent='تم النسخ';btn.classList.add('done');setTimeout(function(){btn.textContent='نسخ';btn.classList.remove('done')},1600)}
+      function fallback(){try{var r=document.createRange();r.selectNodeContents(pre);var s=window.getSelection();s.removeAllRanges();s.addRange(r);btn.textContent='حدّد ثم انسخ'}catch(e){}}
+      if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(ok,fallback)}else fallback();
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

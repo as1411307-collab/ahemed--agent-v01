@@ -14,6 +14,7 @@
 - V0_CONTRACT.md: العقد بين التطبيق والـCore، وpackages/contract يطابقه حرفيًا.
 - docs/VISION.md: للسياق فقط.
 - docs/SKILLS.md: فهرس سكلز التصميم والحركة والـ3D والرسم الحي والصوت في `.claude/skills` (التثبيت: `scripts/install-design-skills.ps1`).
+- docs/references/README.md: كل مراجع أحمد (صور، فيديوهات، ملفات) من شهرين، ومواصفات غرفة العمليات، ومكتبة البرومبتات. تُقرأ قبل أي شغل على الواجهة.
 - عند أي تعارض: docs/BUILD_PROMPT.md هو الحاكم.
 
 ## الستاك (محسوم)

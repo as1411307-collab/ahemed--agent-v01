@@ -29,7 +29,21 @@ $sources = @(
   @{ src = "majidmanzarpour/blender-game-skills"; note = "blender-image-to-3d: concept image -> game-ready GLB in Blender" },
   @{ src = "remotion-dev/skills";                 note = "remotion-*: cinematic video from code (intro / transition clips). Remotion licence: free for individuals" },
   @{ src = "framara/react-flow-skill";            note = "react-flow: the live n8n-style node graph (@xyflow/react) - custom nodes, edges, layout, performance" },
-  @{ src = "livekit/agent-skills";                note = "livekit skills x7: building / testing / debugging / operating LiveKit voice agents (skills only, no MCP)" }
+  @{ src = "livekit/agent-skills";                note = "livekit skills x7: building / testing / debugging / operating LiveKit voice agents (skills only, no MCP)" },
+  @{ src = "Leonxlnx/taste-skill";                note = "taste-skill: anti AI-slop frontend rules (shape lock, typography, depth) - from the Oct 13 Duncan video" },
+  @{ src = "kylezantos/design-motion-principles"; note = "design-motion-principles: build + audit motion, anti-slop checklist, motion cookbook - from the Oct 13 video" }
+)
+
+# MengTo/Skills (MIT, 177 skills by the author of ThreeUI) - only the ones that fit this project's look:
+# cinematic dark scenes, sky/water/atmosphere, glass panels, orbs, Three.js worlds, motion systems, anti-slop audits.
+$mengto = @(
+  "no-ai-design-slop","audit-ai-design-slop","design-first-ui-prompting",
+  "3d-sky-background","3d-sky-rays","3d-ultra-realistic-water","3d-underwater-god-rays","3d-high-poly-models","3d-high-resolution-textures","3d-metal-material","3d-orbit-inspect-demo","3d-retina-resolution",
+  "atmosphere-background","ambient-section-particles","beam-glow-states","beautiful-shadows","dark-glass-clean-layout","glass-dark-ui","glass-dark-mode-clock","mesh-gradient-dark-blue-clean","dark-blue-contrasting-clean",
+  "cinematic-gsap-lenis-motion-system","animation-systems","gsap","build-threejs-scroll-worlds","threejs","threejs-landscape","threejs-weather","webgl-3d-object","background-grid-webgl","build-wireframe-scan-reveal",
+  "thinking-orbs","operational-enterprise-ai","add-mouse-driven-orbit","add-shader-cursor-trail","shaders-cursor-ripples","progressive-blur","masked-reveal","gooey-blob-system","liquid-metal-border","unicorn-studio","vantajs",
+  "video-to-superprompt","html-to-interaction-prompts","optimize-web-animations","performance-profiling","iterate-until-verified","audit-verify-explain-grade-5","elevenlabs-tts",
+  "build-game-audio-feedback","build-game-camera-controls","optimize-threejs-games","create-game-vfx","build-mobile-threejs-games"
 )
 
 $ok = @(); $failed = @()
@@ -39,6 +53,11 @@ foreach ($s in $sources) {
   & npx --yes skills@latest add $s.src -a claude-code -s "*" -y --copy
   if ($LASTEXITCODE -eq 0) { $ok += $s.src } else { $failed += $s.src }
 }
+
+Write-Host ""
+Write-Host ("==> MengTo/Skills  (" + $mengto.Count + " selected skills: cinematic 3D scenes, glass, orbs, motion, anti-slop)") -ForegroundColor Cyan
+& npx --yes skills@latest add MengTo/Skills -a claude-code -s $mengto -y --copy
+if ($LASTEXITCODE -eq 0) { $ok += "MengTo/Skills" } else { $failed += "MengTo/Skills" }
 
 # Two skills ship with their own installers (both write into ./.claude at project scope):
 Write-Host ""

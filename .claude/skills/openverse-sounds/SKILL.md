@@ -48,6 +48,10 @@ Download the chosen `url`, convert, then append the `attribution` line to `asset
 
 Search terms can be adapted; the table is the brief, not a fixed list.
 
+## Second source: Kenney (CC0)
+
+Kenney.nl audio packs (UI sounds, interface clicks, sci-fi sounds) are CC0 and were already the sound source in the Sep 24 Expo build. Download a pack, keep the files you use under `assets/sfx/`, and add one line to `CREDITS.md` ("Kenney.nl, CC0"). Good first pick for tap / slide / chime sounds before searching Openverse.
+
 ## When something is missing
 
 If Openverse has nothing usable, say so and offer: (1) a generated sound (e.g. a synthesised hum from a short script), or (2) ask Ahmed for a file. Do not pull from YouTube, games or film libraries.
