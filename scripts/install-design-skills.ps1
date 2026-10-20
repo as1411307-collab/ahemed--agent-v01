@@ -90,22 +90,31 @@ Write-Host "==> nextlevelbuilder/ui-ux-pro-max-skill  (ui-ux-pro-max: design-sys
 & npx --yes ui-ux-pro-max-cli init --ai claude
 if ($LASTEXITCODE -eq 0) { $ok += "nextlevelbuilder/ui-ux-pro-max-skill" } else { $failed += "nextlevelbuilder/ui-ux-pro-max-skill" }
 
-# Two sources the skills CLI rejects for format reasons (upstream issues, not ours) - installed by hand:
+# Three skills the skills CLI rejects for format reasons (upstream issues, not ours) - installed by hand:
 #  - tsogjavklann/awwwards-3d: SKILL.md description is an unquoted YAML scalar containing ':'
 #    (scroll-driven 3D templates: room walkthrough on a spline camera, glass orb, post chain - Three.js r170 + GSAP + Lenis)
 #  - zyliu0/3d-frontend: the skill file is named 3D-frontend.md instead of SKILL.md
 #    (single-file scroll-driven 3D pages: Three.js + GSAP ScrollTrigger, camera paths)
-# Shallow clone, copy without .git and the duplicated docs/ gallery, rewrite the frontmatter as a folded block scalar.
-function Install-ManualSkill($repo, $folder, $skillFile) {
+#  - MengTo/Skills 3d-metal-material: same unquoted ':' in the description (the other 53 MengTo skills install fine)
+# Shallow clone (sparse when the skill is a subfolder of a big repo), copy without .git and the duplicated
+# docs/ gallery, rewrite the frontmatter as a folded block scalar.
+function Install-ManualSkill($repo, $folder, $skillFile, $subdir) {
   Write-Host ""
-  Write-Host ("==> " + $repo + "  (manual install: " + $folder + ")") -ForegroundColor Cyan
+  Write-Host ("==> " + $repo + $(if ($subdir) { "/" + $subdir } else { "" }) + "  (manual install: " + $folder + ")") -ForegroundColor Cyan
   $tmp = Join-Path ([IO.Path]::GetTempPath()) ("skill-" + [guid]::NewGuid().ToString("N"))
-  & git clone -q --depth 1 ("https://github.com/" + $repo + ".git") $tmp
-  if ($LASTEXITCODE -ne 0) { $script:failed += $repo; return }
+  if ($subdir) {
+    & git clone -q --depth 1 --filter=blob:none --sparse ("https://github.com/" + $repo + ".git") $tmp
+    if ($LASTEXITCODE -eq 0) { & git -C $tmp sparse-checkout set $subdir | Out-Null }
+    $src = Join-Path $tmp $subdir
+  } else {
+    & git clone -q --depth 1 ("https://github.com/" + $repo + ".git") $tmp
+    $src = $tmp
+  }
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path $src)) { $script:failed += $repo; return }
   $dest = Join-Path ".claude/skills" $folder
   if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
   New-Item -ItemType Directory -Path $dest | Out-Null
-  Get-ChildItem $tmp -Force | Where-Object { $_.Name -notin @(".git", "docs", ".DS_Store") } | Copy-Item -Destination $dest -Recurse -Force
+  Get-ChildItem $src -Force | Where-Object { $_.Name -notin @(".git", "docs", ".DS_Store") } | Copy-Item -Destination $dest -Recurse -Force
   $skill = Join-Path $dest "SKILL.md"
   if ($skillFile -ne "SKILL.md") { Move-Item (Join-Path $dest $skillFile) $skill -Force }
   $text = Get-Content $skill -Raw -Encoding UTF8
@@ -128,8 +137,9 @@ function Install-ManualSkill($repo, $folder, $skillFile) {
   Write-Host ("  fixed frontmatter: " + $skill)
   $script:ok += $repo
 }
-Install-ManualSkill "tsogjavklann/awwwards-3d" "awwwards-3d" "SKILL.md"
-Install-ManualSkill "zyliu0/3d-frontend" "3d-frontend" "3D-frontend.md"
+Install-ManualSkill "tsogjavklann/awwwards-3d" "awwwards-3d" "SKILL.md" $null
+Install-ManualSkill "zyliu0/3d-frontend" "3d-frontend" "3D-frontend.md" $null
+Install-ManualSkill "MengTo/Skills" "3d-metal-material" "SKILL.md" "agent-skills/3d/3d-metal-material"
 
 Write-Host ""
 Write-Host "Installed:" -ForegroundColor Green

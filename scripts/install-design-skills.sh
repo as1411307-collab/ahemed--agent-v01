@@ -76,20 +76,31 @@ if npx --yes impeccable install --providers=claude --scope=project </dev/null; t
 echo; echo "==> nextlevelbuilder/ui-ux-pro-max-skill"
 if npx --yes ui-ux-pro-max-cli init --ai claude </dev/null; then OK+=("nextlevelbuilder/ui-ux-pro-max-skill"); else FAILED+=("nextlevelbuilder/ui-ux-pro-max-skill"); fi
 
-# Two sources the skills CLI rejects for format reasons (upstream issues, not ours):
+# Three skills the skills CLI rejects for format reasons (upstream issues, not ours):
 #  - tsogjavklann/awwwards-3d: SKILL.md description is an unquoted YAML scalar containing ':'
 #  - zyliu0/3d-frontend: the skill file is named 3D-frontend.md instead of SKILL.md
-# Install them by hand: shallow clone, copy without .git and the duplicated docs/ gallery,
-# then rewrite the frontmatter as a folded block scalar so every YAML parser accepts it.
+#  - MengTo/Skills 3d-metal-material: same unquoted ':' in the description (the other 53 install fine)
+# Install them by hand: shallow clone (sparse when the skill is a subfolder of a big repo), copy
+# without .git and the duplicated docs/ gallery, then rewrite the frontmatter as a folded block
+# scalar so every YAML parser accepts it.
 manual_skill() {
-  local repo="$1" folder="$2" skillfile="$3" dest=".claude/skills/$2" tmp
+  local repo="$1" folder="$2" skillfile="$3" subdir="${4:-}" dest=".claude/skills/$2" tmp src
   tmp="$(mktemp -d)"
-  echo; echo "==> $repo (manual install: $folder)"
-  if ! git clone -q --depth 1 "https://github.com/$repo.git" "$tmp/src"; then
-    FAILED+=("$repo"); rm -rf "$tmp"; return
+  echo; echo "==> $repo${subdir:+/$subdir} (manual install: $folder)"
+  if [ -n "$subdir" ]; then
+    if ! git clone -q --depth 1 --filter=blob:none --sparse "https://github.com/$repo.git" "$tmp/src" \
+       || ! git -C "$tmp/src" sparse-checkout set "$subdir" >/dev/null 2>&1; then
+      FAILED+=("$repo/$subdir"); rm -rf "$tmp"; return
+    fi
+    src="$tmp/src/$subdir"
+  else
+    if ! git clone -q --depth 1 "https://github.com/$repo.git" "$tmp/src"; then
+      FAILED+=("$repo"); rm -rf "$tmp"; return
+    fi
+    src="$tmp/src"
   fi
   rm -rf "$dest"; mkdir -p "$dest"
-  tar -C "$tmp/src" --exclude=.git --exclude=docs --exclude=.DS_Store -cf - . | tar -C "$dest" -xf -
+  tar -C "$src" --exclude=.git --exclude=docs --exclude=.DS_Store -cf - . | tar -C "$dest" -xf -
   if python3 -I - "$dest" "$skillfile" "$folder" <<'PY'
 import re, sys, pathlib
 dest, skillfile, name = sys.argv[1:4]
@@ -114,11 +125,12 @@ out.append("---")
 p.write_text("\n".join(out) + "\n" + text[m.end():], encoding="utf-8")
 print("  fixed frontmatter: " + str(p))
 PY
-  then OK+=("$repo"); else FAILED+=("$repo"); fi
+  then OK+=("$repo${subdir:+/$subdir}"); else FAILED+=("$repo${subdir:+/$subdir}"); fi
   rm -rf "$tmp"
 }
 manual_skill tsogjavklann/awwwards-3d awwwards-3d SKILL.md
 manual_skill zyliu0/3d-frontend 3d-frontend 3D-frontend.md
+manual_skill MengTo/Skills 3d-metal-material SKILL.md agent-skills/3d/3d-metal-material
 
 echo; echo "Installed:"; printf '  + %s\n' "${OK[@]}"
 if [ ${#FAILED[@]} -gt 0 ]; then echo "Failed:"; printf '  - %s\n' "${FAILED[@]}"; fi
