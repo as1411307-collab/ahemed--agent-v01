@@ -1,11 +1,648 @@
 {
   "version": 1,
   "skills": {
+    "3d-high-poly-models": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/3d/3d-high-poly-models/SKILL.md",
+      "computedHash": "2eef540c8ba452d14f2d6d610e0a291df6c5263191d24620939648a62f18076b"
+    },
+    "3d-high-resolution-textures": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/3d/3d-high-resolution-textures/SKILL.md",
+      "computedHash": "382cc434c86920f7450308ed396924faadf93ec8bbdee11c74f05a22cabd51e1"
+    },
+    "3d-orbit-inspect-demo": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/3d/3d-orbit-inspect-demo/SKILL.md",
+      "computedHash": "80077bcef7b2eb42f4789b1a14880a456f3cc693ccd52ece2ad1f5b0851aadde"
+    },
+    "3d-retina-resolution": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/3d/3d-retina-resolution/SKILL.md",
+      "computedHash": "1fe7bc30b713a8c4b6dc493febdfa4b2ea78bd7203509782d111ef215df56676"
+    },
+    "3d-sky-background": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/3d/3d-sky-background/SKILL.md",
+      "computedHash": "45e44c9b5e2692ebf91e5f6285f4bd89ab0cd7cf6bbe380a3428adf8fe0100d3"
+    },
+    "3d-sky-rays": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/3d/3d-sky-rays/SKILL.md",
+      "computedHash": "d18d4ff41bf93803d16bec5fed611e824d68877c1a63e62104a6e266a26dd3a5"
+    },
+    "3d-ultra-realistic-water": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/3d/3d-ultra-realistic-water/SKILL.md",
+      "computedHash": "430399c3b84cdd70507e95007b16e7652d0fc309804aa0d118979a7306c9334f"
+    },
+    "3d-underwater-god-rays": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/3d/3d-underwater-god-rays/SKILL.md",
+      "computedHash": "4015c50506fef21ece6d5b16d8fccd4ea353a520bd6007142088c4570f985ee3"
+    },
+    "add-mouse-driven-orbit": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/add-mouse-driven-orbit/SKILL.md",
+      "computedHash": "3e04479755cec76d50aca8679c3f2a9d983b2d5e5d4aff733eaf0c4eb5517f50"
+    },
+    "add-shader-cursor-trail": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/add-shader-cursor-trail/SKILL.md",
+      "computedHash": "55715d9f56050feb11483ea9e792ad34b5bc430e08944be649ef486de5340403"
+    },
+    "ambient-section-particles": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/ambient-section-particles/SKILL.md",
+      "computedHash": "6dfe9710b70011348ce7e200be3c3e11c7f5a3f572891e715dc3588bac16a834"
+    },
+    "anatomy": {
+      "source": "wheresryan22/anatomy",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "37fe1f16683eddee1b3723a3fe8e4a5b92bb653a6991128a372d3268730cdc90"
+    },
+    "anatomy-reveal": {
+      "source": "annnguyentt/anatomy-reveal-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "f6ae0508bca7a844784ec515fa4763801b9a1a193559f9571e294b5c9e88ad68"
+    },
+    "animation-systems": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/animation-systems/SKILL.md",
+      "computedHash": "f6923a92d7d3f6e8465543ca9cbf2384d787d8d3a63d286a8dff013bbd131a36"
+    },
+    "atmosphere-background": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/atmosphere-background/SKILL.md",
+      "computedHash": "a8f7f52e6d06575c943bac44247fa8328ef48ca408ca323589baddb6873600e7"
+    },
+    "audit-ai-design-slop": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/ui/audit-ai-design-slop/SKILL.md",
+      "computedHash": "9e029607aaae049e80135af43be248d0b60394b6e2ca85426e6878765613029c"
+    },
+    "audit-verify-explain-grade-5": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/codex/audit-verify-explain-grade-5/SKILL.md",
+      "computedHash": "eeba237b7244f77b249874eb77cdc5208dde135a1b0741f6a95afea899a9f794"
+    },
+    "background-grid-webgl": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/background-grid-webgl/SKILL.md",
+      "computedHash": "db7ff1c73aa4928a6f34b7479a906d52448ebd7582a6e765c4e5ee84206e79ea"
+    },
+    "beam-glow-states": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/beam-glow-states/SKILL.md",
+      "computedHash": "a96a6759bbcb6ae096f31625d436354c652513b7576ad376fec21b51bfb1a798"
+    },
+    "beautiful-shadows": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/beautiful-shadows/SKILL.md",
+      "computedHash": "6abcd3ab6141c617f4e8514886d0ac744a1d6c1e4b0ccbd7087a19bedd5746f1"
+    },
+    "blender-image-to-3d": {
+      "source": "majidmanzarpour/blender-game-skills",
+      "sourceType": "github",
+      "skillPath": "skills/blender-image-to-3d/SKILL.md",
+      "computedHash": "8f59d1d73d4bc3f33fd2d43b458691b99faea25395ae0ebc9c91f66e69fc3162"
+    },
+    "build-game-audio-feedback": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/game-development/build-game-audio-feedback/SKILL.md",
+      "computedHash": "7ae51fa8952af75de1cb7c71a29f43e5497d66edda09fee931be02b5cb4e48f4"
+    },
+    "build-game-camera-controls": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/game-development/build-game-camera-controls/SKILL.md",
+      "computedHash": "9c1307c272876b165f588f2d606912edd4d89a326dc519c7348d9d3150d49d85"
+    },
+    "build-mobile-threejs-games": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/game-development/build-mobile-threejs-games/SKILL.md",
+      "computedHash": "69612c2fa511323ae867262ac69189764bd4de756674837095a44216f45adc56"
+    },
+    "build-threejs-scroll-worlds": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/build-threejs-scroll-worlds/SKILL.md",
+      "computedHash": "860b352e47512ff7144ea79466c38a44d811be9a59a99125ce8e5b658735773e"
+    },
+    "build-wireframe-scan-reveal": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/build-wireframe-scan-reveal/SKILL.md",
+      "computedHash": "bd41640e7b19b1215f64760caf1958691c1bb7f5157310a20dac4921a1c5f9a7"
+    },
+    "building-livekit-agents": {
+      "source": "livekit/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/building-livekit-agents/SKILL.md",
+      "computedHash": "8e9a98e9e6baa4ebf8b712643b241bf725f9e9d159c04022030063cfde56a81e"
+    },
+    "cinematic-gsap-lenis-motion-system": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/cinematic-gsap-lenis-motion-system/SKILL.md",
+      "computedHash": "c88995e62e587f7d2eaaa514131912a0ed5b77613513fdf61a938e51298ded4c"
+    },
+    "create-game-vfx": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/game-development/create-game-vfx/SKILL.md",
+      "computedHash": "996e509eb40f020398ba16e4281da0b83108d002f6903910aaac962fe3c47ef4"
+    },
+    "dark-blue-contrasting-clean": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/dark-blue-contrasting-clean/SKILL.md",
+      "computedHash": "16f0b1479ded1da832dddcf1e456ddbad734b0084ffc47a5602c193c2eae446f"
+    },
+    "dark-glass-clean-layout": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/dark-glass-clean-layout/SKILL.md",
+      "computedHash": "75092a41eb5865176e5bbdc29f8bb93925153e2665b84e4ca2e60e12286bdee8"
+    },
+    "debugging-livekit-agents": {
+      "source": "livekit/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/debugging-livekit-agents/SKILL.md",
+      "computedHash": "edfdc9ffbc6c63559295d21277cbbcdc9dad096941d5ea7be91a8d12ca67094c"
+    },
     "design-dna": {
       "source": "zanwei/design-dna",
       "sourceType": "github",
       "skillPath": "SKILL.md",
       "computedHash": "241a98aa785985e55b966fb16312e84cc533574e3b14b981689d17ea867aa1cc"
+    },
+    "design-first-ui-prompting": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/ui/design-first-ui-prompting/SKILL.md",
+      "computedHash": "8f5a040bc9b73645dedf34744a2db7e2ffbcbaa0fe8725a21e6c01112f68ecfa"
+    },
+    "design-motion-principles": {
+      "source": "kylezantos/design-motion-principles",
+      "sourceType": "github",
+      "skillPath": "skills/design-motion-principles/SKILL.md",
+      "computedHash": "6410c1844f511249f11f38d30d217cfecf7f595f45a868d74284b6380bab47d7"
+    },
+    "design-taste-frontend": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill/SKILL.md",
+      "computedHash": "69021ac7e671c0c0d85d65b570003cef360b1c296323fa28c042884e146478ca"
+    },
+    "elevenlabs-tts": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/codex/elevenlabs-tts/SKILL.md",
+      "computedHash": "7f7980e8201524e33c427a5ab73b9e430bae61531dd9faa470963b6cd0b928f4"
+    },
+    "genjutsu": {
+      "source": "genjutsu.athevon.dev",
+      "sourceUrl": "https://genjutsu.athevon.dev",
+      "sourceType": "well-known",
+      "computedHash": "ffbd56b8fed6a5ce617d9314f72987243c90cd9840af29ed2815ca25f190c500",
+      "wellKnownDigest": "sha256:2d74fdddb7eb1f5ef39eb9c666b078b3fdbcd6a9645bdb0c88edfc1f5970034f"
+    },
+    "glass-dark-mode-clock": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/glass-dark-mode-clock/SKILL.md",
+      "computedHash": "c0d1287776c21cf9617545d4408fa7c8d290f62911c7e6118e59a6b3dbf7932d"
+    },
+    "glass-dark-ui": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/glass-dark-ui/SKILL.md",
+      "computedHash": "bf5293a453e98fec694d51226e4f54d3f84ec8038088462a41981f2bfa14a8a4"
+    },
+    "gooey-blob-system": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/gooey-blob-system/SKILL.md",
+      "computedHash": "f246d8bd9d529a6898b771401bb030f62f2fa027278cccab4bc316866c0605e1"
+    },
+    "gsap": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/gsap/SKILL.md",
+      "computedHash": "5c73204f0beeb4145e94f19b299c657b68f1f3d9f4a9d2271b1c53b474a03caa"
+    },
+    "gsap-core": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-core/SKILL.md",
+      "computedHash": "c4a01101d9e1aafbf4b49f75d74f9349790d8741981ba0237c990093863035a6"
+    },
+    "gsap-frameworks": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-frameworks/SKILL.md",
+      "computedHash": "4852e85a48088d9044b08ebd1db607915b628c0c3ec7e04300713f546728fbdf"
+    },
+    "gsap-performance": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-performance/SKILL.md",
+      "computedHash": "863842ac2d7aee53fd4f0025c960173d7ad3e658a5715b89b2211fa280213c1f"
+    },
+    "gsap-plugins": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-plugins/SKILL.md",
+      "computedHash": "791bda0e6e460511fe82a78e745db519b88ffaeeab4d04a74879a03ca4f41740"
+    },
+    "gsap-react": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-react/SKILL.md",
+      "computedHash": "7d3b52822681a4158e371f895c58fb7030ecaf33f585a534b7162f9e92c5d893"
+    },
+    "gsap-scrolltrigger": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-scrolltrigger/SKILL.md",
+      "computedHash": "1cdc5647693783cb7a662d84a5de434c88a051ed56b4d33597c9b5782b5973e6"
+    },
+    "gsap-timeline": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-timeline/SKILL.md",
+      "computedHash": "54981c2feec5a9c0d57988aeb32315af32bdeadd261550d5e9db7a7b1f08b487"
+    },
+    "gsap-utils": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-utils/SKILL.md",
+      "computedHash": "1ab2387f6e694718a4f1b5acf2a4ab16e1b884c3428adf5f6b26d830f00826cf"
+    },
+    "hairline-adopt": {
+      "source": "lucasmarkes/hairline",
+      "sourceType": "github",
+      "skillPath": "skills/hairline-adopt/SKILL.md",
+      "computedHash": "b637cec02d6073b9b19cfcb2a45e0b9ec0ab074646314e5880b001de2cb56d9d"
+    },
+    "hairline-create": {
+      "source": "lucasmarkes/hairline",
+      "sourceType": "github",
+      "skillPath": "skills/hairline-create/SKILL.md",
+      "computedHash": "97dc77430c05a87e0e1e985f7952938b02147040742ec88095ccfe6f1abe11b5"
+    },
+    "html-to-interaction-prompts": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/codex/html-to-interaction-prompts/SKILL.md",
+      "computedHash": "dd7153950254623b917a065f891f0d0181a7c4cec565ee74be7b9d37f1fe699a"
+    },
+    "iterate-until-verified": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/codex/iterate-until-verified/SKILL.md",
+      "computedHash": "36e392b413a58dd1b3e035c92c6b6535df6c6628ca972c04adfd3eaaabc07568"
+    },
+    "liquid-metal-border": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/liquid-metal-border/SKILL.md",
+      "computedHash": "4c462d40a20ecb576e6a6d0dbae76b46c74033fff986633d971780bea1fca9f6"
+    },
+    "masked-reveal": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/masked-reveal/SKILL.md",
+      "computedHash": "d48f37b4641e4dc1fa229e8b15cc982d2ad4ff34851be7c1919cafbc49ab7e0c"
+    },
+    "mesh-gradient-dark-blue-clean": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/mesh-gradient-dark-blue-clean/SKILL.md",
+      "computedHash": "0996bd0aae284801e4a8df33630da441c58ef830cc321f81090214f54db2c989"
+    },
+    "motion": {
+      "source": "motiondivision/ai-kit",
+      "sourceType": "github",
+      "skillPath": "plugins/motion/skills/motion/SKILL.md",
+      "computedHash": "20371126b9f4ac9ad5fa895b56add1e18cf22ee57dcc5d80a4937a33ba16dedf"
+    },
+    "motion-design": {
+      "source": "LottieFiles/motion-design-skill",
+      "sourceType": "github",
+      "skillPath": "skills/motion-design/SKILL.md",
+      "computedHash": "9fcf9130cc46ee8fd1d8e09a9263347a9d76efbcbfa46591cc4cefaf19bbb453"
+    },
+    "no-ai-design-slop": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/ui/no-ai-design-slop/SKILL.md",
+      "computedHash": "b3b7e88b282f4e498c10592d77f3a55e65ad1b81979cf2a6b06aa07e84eed34f"
+    },
+    "operating-livekit-agents": {
+      "source": "livekit/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/operating-livekit-agents/SKILL.md",
+      "computedHash": "6cf402246a323e11db16c7b0b97c5d07d0ce471c348374fbfba9edb6f6ce4afa"
+    },
+    "operational-enterprise-ai": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/operational-enterprise-ai/SKILL.md",
+      "computedHash": "9d0a5bb02bcba47ef9faa30ba87d6baeb56b7f761c1946b6ebd607625d3f4132"
+    },
+    "optimize-threejs-games": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/game-development/optimize-threejs-games/SKILL.md",
+      "computedHash": "c4e92fe1a580f0c204b284b27bcb083011fdee9a3569a30a3b80c93c5b3ff478"
+    },
+    "optimize-web-animations": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/codex/optimize-web-animations/SKILL.md",
+      "computedHash": "4643ff77411c8e6661c445c7c1c7cc2919f8722dc1a0d43b80e9b15fea62b6df"
+    },
+    "performance-profiling": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/codex/performance-profiling/SKILL.md",
+      "computedHash": "ac8ec8f7669924d285050b0612075fef69a6e6db1353403c467fae3256cd6bfc"
+    },
+    "progressive-blur": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/progressive-blur/SKILL.md",
+      "computedHash": "27ac9443c3e2e6c55312cfa253505fb7239bc40c032451f17abff06de0aa1692"
+    },
+    "r3f-best-practices": {
+      "source": "emalorenzo/three-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/r3f-best-practices/SKILL.md",
+      "computedHash": "d15cf5c47c35125afb4bfb079c3da515a34152f9839985065270a85e6bf36fb5"
+    },
+    "react-flow": {
+      "source": "framara/react-flow-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "19e772a21bd29223731aa6d2cdd8be0d312fc6e37f12ff585157e68369a8e719"
+    },
+    "reading-livekit-docs": {
+      "source": "livekit/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/reading-livekit-docs/SKILL.md",
+      "computedHash": "d2e6a41ce673f1073bfee16296161110bca9d43bd31df22bd22b75919afff562"
+    },
+    "remotion-best-practices": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-best-practices/SKILL.md",
+      "computedHash": "143f8dc846423565cdc507d96df65f56d71804da399796818b1f2906139f0133"
+    },
+    "remotion-captions": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-captions/SKILL.md",
+      "computedHash": "f381d2b22e89567a6502bc8505fb2c4c2bf089b35c4405705f851294e435e8c0"
+    },
+    "remotion-create": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-create/SKILL.md",
+      "computedHash": "f1da9d4f2f7755849fcbee97ddf95b0da3abad37ef75b1c001790fc94c170bbb"
+    },
+    "remotion-docs": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-docs/SKILL.md",
+      "computedHash": "5aafc68bc3122437ab6e7990c31d527fe58263b37b2bf711bae47e497a4b36f0"
+    },
+    "remotion-interactivity": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-interactivity/SKILL.md",
+      "computedHash": "18ec066203be622d57457291440b99f88761bb72f2664d4a8ab4a44521b2463a"
+    },
+    "remotion-maps": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-maps/SKILL.md",
+      "computedHash": "b62177589d656d23adfdcf0c2dc9be995f3dca7a9f9cecee5c8199065d7caecb"
+    },
+    "remotion-markup": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-markup/SKILL.md",
+      "computedHash": "71f53e60534ce992b29a4d1aa4ced06c2311024cb799a04d85f03d78c294e8a9"
+    },
+    "remotion-multimedia": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-multimedia/SKILL.md",
+      "computedHash": "0e272269271440384cb59e21cc5a26e068f15c5850745f9078ca31720c430c8a"
+    },
+    "remotion-render": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-render/SKILL.md",
+      "computedHash": "2ecc164c8fd4ee7353457f764a647382f435c0cdc7b7859792489858d49bf2c0"
+    },
+    "remotion-saas": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-saas/SKILL.md",
+      "computedHash": "e8cfaffd42e5404c4da8223d3eb3e4160f8b125524853dc0ef1e1f6758ffac78"
+    },
+    "remotion-studio": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-studio/SKILL.md",
+      "computedHash": "a98c691a92aed78feffa904935e2c12dd36fc8415b61b5f903a4b64796f193c0"
+    },
+    "remotion-upgrade": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion-upgrade/SKILL.md",
+      "computedHash": "b40fff47bad2513f42967dd95d01d801ccf640c292d222f54b3ad30989cc23a2"
+    },
+    "running-livekit-simulations": {
+      "source": "livekit/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/running-livekit-simulations/SKILL.md",
+      "computedHash": "3884262f6b139b7d32ceafb63516b8645a961362703825cc3a4c34f6647fe80b"
+    },
+    "shaders-cursor-ripples": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/shaders-cursor-ripples/SKILL.md",
+      "computedHash": "79722f65c0584d441f6ff3ef59640a36ca356cceb29f44e35b5a4577a8d7deea"
+    },
+    "testing-livekit-agents": {
+      "source": "livekit/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/testing-livekit-agents/SKILL.md",
+      "computedHash": "899128103051626aa5872efdb03d4ead8430ce2ed55c02da08c7cc1f42de0b1d"
+    },
+    "thinking-orbs": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/thinking-orbs/SKILL.md",
+      "computedHash": "1b8a0ed61187330c0baa36584ea3d025144f51dbd5bdecd7a1541138e4f01e2c"
+    },
+    "three-best-practices": {
+      "source": "emalorenzo/three-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/three-best-practices/SKILL.md",
+      "computedHash": "d135429cf44ae2fe06e6403b0fb417eaeb8c328641308b1b615e85a130c73794"
+    },
+    "threejs": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/threejs/SKILL.md",
+      "computedHash": "4ad72664a1fa3569194a8c0dfe7fa09d6b1aea2e59363e93c9d663f0245c5194"
+    },
+    "threejs-animation": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-animation/SKILL.md",
+      "computedHash": "52acf24ba76b47b094e5734622947fcc85deebf2469bb5c8ef77a1f1dcfc3e5c"
+    },
+    "threejs-asset-pipeline": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-asset-pipeline/SKILL.md",
+      "computedHash": "be5c2bbda841382229d99182f88e94eba8974474bd065b994e881bb9cc2058d8"
+    },
+    "threejs-fundamentals": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-fundamentals/SKILL.md",
+      "computedHash": "c0293a5eaf5168cdbeb1e9bfc5d5b7aa24396f604a8695b26a72d833c2352108"
+    },
+    "threejs-geometry": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-geometry/SKILL.md",
+      "computedHash": "cae4d8f02ffe449edbc33a2a9ba79020dcb415e7c187d48ed8ffc166207d2e77"
+    },
+    "threejs-interaction": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-interaction/SKILL.md",
+      "computedHash": "3a9d60c473947217f2bd9fbdfb12084e55ae2f240aa6fc718f61c55a73d6fb34"
+    },
+    "threejs-landscape": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/threejs-landscape/SKILL.md",
+      "computedHash": "6c9f7c1857884d053d9c4398679fa05cbf0b6298d167f41b43c1d5f5f838f8b5"
+    },
+    "threejs-lighting": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-lighting/SKILL.md",
+      "computedHash": "231a7aec3b2d6aa061026397b5453b22518ac9391eb0f31164bfd06dd4bcacd6"
+    },
+    "threejs-loaders": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-loaders/SKILL.md",
+      "computedHash": "f43a0994b7bead131c51361ff347ea7b2db48ec64994a8ee263171c692beac88"
+    },
+    "threejs-materials": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-materials/SKILL.md",
+      "computedHash": "8dbeb3cc26e0825e0bb6857bcdab04d997a31d8a2d685d850cdfce98df4c875d"
+    },
+    "threejs-performance": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-performance/SKILL.md",
+      "computedHash": "5aa6eb8103c8f882f86a48c65245f1e8f1c48e83abc888e0d7a37833e7d9188b"
+    },
+    "threejs-postprocessing": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-postprocessing/SKILL.md",
+      "computedHash": "21ba7ee7155d7ad8643bafc0a832d29bf87a37b24acd5e4201a0b7c01470ab09"
+    },
+    "threejs-react-three-fiber": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-react-three-fiber/SKILL.md",
+      "computedHash": "c584eb40814c9dba186a555adb9fa4acba84f4c40d47fd5b30fc90415f8ca53a"
+    },
+    "threejs-shaders": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-shaders/SKILL.md",
+      "computedHash": "af0a4cdfc80390b30a898bb5a3fe30e4f61b304776a9aebbdb7451b0fc1c2c0f"
+    },
+    "threejs-textures": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-textures/SKILL.md",
+      "computedHash": "73544dc3606b38270ddd909d57fd8a5df8291c3bae432417cf3f797ab1ca1fd3"
+    },
+    "threejs-weather": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/threejs-weather/SKILL.md",
+      "computedHash": "aaaca541d568334df1c09cc2288add0e1ed06ebe0cb1dc4dc5589d1de9895ace"
+    },
+    "unicorn-studio": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/unicorn-studio/SKILL.md",
+      "computedHash": "e51d706f892d2c93d5a41fe9d70a802c26606f0e8edd11d28d9115df2d6cfdc0"
+    },
+    "vantajs": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/vantajs/SKILL.md",
+      "computedHash": "b92934ca234bfdf9120141382cd41224d500467ecab96c2f37a28c8de7758a35"
+    },
+    "video-to-superprompt": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/codex/video-to-superprompt/SKILL.md",
+      "computedHash": "a688ba781bedfdf191cf9915bec080dcb1d6aa944e0de86057a5cbcf5327eabf"
+    },
+    "webgl-3d-object": {
+      "source": "MengTo/Skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/web-design/webgl-3d-object/SKILL.md",
+      "computedHash": "ccdb154011337b18118876fe26e7597c20124d7db7219e50cdfd8dd28e713001"
+    },
+    "writing-livekit-scenarios": {
+      "source": "livekit/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/writing-livekit-scenarios/SKILL.md",
+      "computedHash": "fe8748aaae353c86946f482a2414b75cb7d5c5fa20931e2f06e174b1153def78"
     }
   }
 }
