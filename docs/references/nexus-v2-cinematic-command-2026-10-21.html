@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS - Cinematic Command Center</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+  
+  :root {
+    --primary: #00d4ff;
+    --secondary: #7b2cbf;
+    --accent: #ff006e;
+    --success: #00ff88;
+    --warning: #ffaa00;
+    --danger: #ff4444;
+    --bg-dark: #0a0015;
+    --bg-darker: #050010;
+    --text: #ffffff;
+    --text-muted: rgba(255, 255, 255, 0.6);
+    --border: rgba(0, 212, 255, 0.3);
+  }
+
+  body {
+    font-family: 'Rajdhani', sans-serif;
+    background: var(--bg-darker);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    user-select: none;
+  }
+
+  #intro-screen {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: linear-gradient(135deg, #0a0015 0%, #1a0533 50%, #000 100%);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    transition: opacity 2s ease;
+  }
+
+  #intro-screen.fade-out { opacity: 0; pointer-events: none; }
+
+  .intro-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 72px;
+    font-weight: 900;
+    background: linear-gradient(135deg, #00d4ff, #7b2cbf, #ff006e);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: titleGlow 3s ease-in-out infinite;
+    letter-spacing: 10px;
+    margin-bottom: 30px;
+  }
+
+  @keyframes titleGlow {
+    0%, 100% { filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.5)); }
+    50% { filter: drop-shadow(0 0 40px rgba(123, 44, 191, 0.8)); }
+  }
+
+  .start-btn {
+    padding: 20px 60px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(123, 44, 191, 0.2));
+    border: 2px solid #00d4ff;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+  }
+
+  .start-btn:hover {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.4), rgba(123, 44, 191, 0.4));
+    box-shadow: 0 0 40px rgba(0, 212, 255, 0.6);
+    transform: scale(1.05);
+  }
+
+  #game-container {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 2s ease;
+  }
+
+  #game-container.active { opacity: 1; pointer-events: all; }
+
+  #bg-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 1;
+  }
+
+  /* ============ SCENE INDICATOR ============ */
+  .scene-indicator {
+    position: fixed;
+    top: 90px;
+    right: 30px;
+    background: rgba(10, 0, 21, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 0, 110, 0.4);
+    border-radius: 10px;
+    padding: 15px 25px;
+    z-index: 150;
+    font-family: 'Orbitron', sans-serif;
+    transition: all 0.5s ease;
+  }
+
+  .scene-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 2px;
+    margin-bottom: 5px;
+  }
+
+  .scene-name {
+    font-size: 16px;
+    color: #ff006e;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(255, 0, 110, 0.5);
+  }
+
+  /* ============ LIVE THINKING LOG ============ */
+  .thinking-log {
+    position: fixed;
+    top: 90px;
+    left: 30px;
+    width: 350px;
+    max-height: 300px;
+    background: rgba(10, 0, 21, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(0, 255, 136, 0.4);
+    border-radius: 10px;
+    padding: 15px;
+    z-index: 150;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    overflow-y: auto;
+  }
+
+  .thinking-log-header {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    color: #00ff88;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 255, 136, 0.3);
+  }
+
+  .thinking-entry {
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    background: rgba(0, 255, 136, 0.05);
+    border-right: 2px solid #00ff88;
+    border-radius: 4px;
+    animation: slideIn 0.3s ease;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .thinking-time {
+    color: var(--text-muted);
+    font-size: 9px;
+    margin-bottom: 3px;
+  }
+
+  .thinking-text {
+    color: #00ff88;
+    line-height: 1.4;
+  }
+
+  /* ============ NEURAL TERMINAL ============ */
+  .neural-terminal {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    width: 400px;
+    height: 250px;
+    background: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    border-radius: 10px;
+    padding: 15px;
+    z-index: 150;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    overflow-y: auto;
+    transition: all 0.3s ease;
+  }
+
+  .neural-terminal.minimized {
+    height: 40px;
+    overflow: hidden;
+  }
+
+  .terminal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.3);
+    cursor: pointer;
+  }
+
+  .terminal-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    color: #00d4ff;
+    letter-spacing: 2px;
+  }
+
+  .terminal-toggle {
+    background: none;
+    border: none;
+    color: #00d4ff;
+    cursor: pointer;
+    font-size: 16px;
+  }
+
+  .terminal-content {
+    color: #00ff88;
+    line-height: 1.6;
+  }
+
+  .terminal-line {
+    margin-bottom: 5px;
+    opacity: 0.8;
+  }
+
+  .terminal-line.api-call { color: #00d4ff; }
+  .terminal-line.token { color: #ffaa00; }
+  .terminal-line.agent { color: #ff006e; }
+  .terminal-line.system { color: #00ff88; }
+  .terminal-line.scene { color: #ff006e; font-weight: bold; }
+
+  /* ============ TOOLBAR ============ */
+  .toolbar {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10, 0, 21, 0.95);
+    backdrop-filter: blur(30px);
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    border-radius: 50px;
+    padding: 12px 30px;
+    z-index: 200;
+    display: flex;
+    gap: 15px;
+    box-shadow: 0 0 40px rgba(0, 212, 255, 0.2);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .tool-btn {
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 25px;
+    padding: 10px 20px;
+    color: #00d4ff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  .tool-btn:hover {
+    background: rgba(0, 212, 255, 0.3);
+    border-color: #00d4ff;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+    transform: translateY(-2px);
+  }
+
+  /* ============ CORE & AGENTS ============ */
+  .core-container {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 250px; height: 250px;
+    z-index: 50;
+    cursor: pointer;
+  }
+
+  .core-orb-wrapper { position: relative; width: 100%; height: 100%; }
+
+  .core-orb {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #fff 0%, #00d4ff 20%, #7b2cbf 60%, #000 100%);
+    box-shadow: 
+      0 0 60px #00d4ff,
+      0 0 120px #7b2cbf,
+      0 0 180px rgba(123, 44, 191, 0.5),
+      inset 0 0 40px rgba(255, 255, 255, 0.8);
+    animation: corePulse 3s ease-in-out infinite;
+    transition: all 0.5s ease;
+  }
+
+  .core-orb.thinking {
+    animation: coreThinking 0.5s ease-in-out infinite;
+    box-shadow: 
+      0 0 80px #00ff88,
+      0 0 160px #00d4ff,
+      0 0 240px rgba(0, 255, 136, 0.7),
+      inset 0 0 60px rgba(255, 255, 255, 1);
+  }
+
+  @keyframes corePulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.15); }
+  }
+
+  @keyframes coreThinking {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.3); }
+  }
+
+  .core-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 2px solid;
+    animation: ringRotate linear infinite;
+  }
+
+  .core-ring-1 { width: 160px; height: 160px; border-color: rgba(0, 212, 255, 0.6); animation-duration: 8s; }
+  .core-ring-2 { width: 200px; height: 200px; border-color: rgba(123, 44, 191, 0.4); animation-duration: 12s; animation-direction: reverse; }
+  .core-ring-3 { width: 240px; height: 240px; border-color: rgba(255, 0, 110, 0.3); animation-duration: 16s; }
+
+  @keyframes ringRotate {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+  }
+
+  .core-label {
+    position: absolute;
+    bottom: -50px; left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    letter-spacing: 4px;
+    color: #00d4ff;
+    text-shadow: 0 0 20px #00d4ff;
+    white-space: nowrap;
+  }
+
+  .sub-agent {
+    position: absolute;
+    width: 70px; height: 70px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 212, 255, 0.2), rgba(123, 44, 191, 0.2));
+    border: 2px solid;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    backdrop-filter: blur(10px);
+  }
+
+  .sub-agent:hover { transform: scale(1.4); z-index: 60; }
+  .sub-agent.active {
+    animation: agentActive 1s ease-in-out infinite;
+    box-shadow: 0 0 40px currentColor;
+  }
+
+  @keyframes agentActive {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+  }
+
+  .sub-agent-icon { font-size: 28px; filter: drop-shadow(0 0 10px currentColor); }
+  .sub-agent-label {
+    position: absolute;
+    bottom: -30px; left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+  }
+
+  #connectors-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 40;
+    pointer-events: none;
+  }
+
+  .connector-line {
+    stroke-width: 2;
+    fill: none;
+    stroke-dasharray: 8, 4;
+    animation: dashFlow 1.5s linear infinite;
+    opacity: 0.6;
+  }
+
+  .connector-line.active {
+    opacity: 1;
+    stroke-width: 3;
+    filter: drop-shadow(0 0 10px currentColor);
+  }
+
+  @keyframes dashFlow { to { stroke-dashoffset: -24; } }
+
+  /* ============ CHAT ============ */
+  .chat-container {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 700px;
+    max-width: 90%;
+    background: rgba(10, 0, 21, 0.9);
+    backdrop-filter: blur(30px);
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    border-radius: 15px;
+    padding: 25px;
+    z-index: 100;
+    box-shadow: 0 0 40px rgba(0, 212, 255, 0.2);
+  }
+
+  .chat-messages {
+    height: 200px;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+  }
+
+  .chat-message {
+    margin-bottom: 15px;
+    padding: 15px 20px;
+    border-radius: 12px;
+    max-width: 85%;
+    animation: messageSlide 0.4s ease;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .chat-message.user {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 212, 255, 0.1));
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    margin-left: auto;
+    text-align: right;
+  }
+
+  .chat-message.agent {
+    background: linear-gradient(135deg, rgba(123, 44, 191, 0.2), rgba(123, 44, 191, 0.1));
+    border: 1px solid rgba(123, 44, 191, 0.4);
+  }
+
+  @keyframes messageSlide {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .chat-input-container { display: flex; gap: 15px; }
+
+  .chat-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 25px;
+    padding: 15px 25px;
+    color: #fff;
+    font-size: 15px;
+    font-family: 'Rajdhani', sans-serif;
+    outline: none;
+  }
+
+  .chat-input:focus {
+    border-color: #00d4ff;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+  }
+
+  .chat-send {
+    background: linear-gradient(135deg, #00d4ff, #7b2cbf);
+    border: none;
+    border-radius: 50%;
+    width: 50px; height: 50px;
+    cursor: pointer;
+    color: #fff;
+    font-size: 20px;
+    transition: all 0.3s ease;
+  }
+
+  .chat-send:hover {
+    transform: scale(1.1) rotate(10deg);
+    box-shadow: 0 0 30px rgba(0, 212, 255, 0.6);
+  }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.3); }
+  ::-webkit-scrollbar-thumb { 
+    background: linear-gradient(180deg, #00d4ff, #7b2cbf);
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div id="intro-screen">
+  <div class="intro-title">NEXUS</div>
+  <button class="start-btn" onclick="startGame()">INITIALIZE SYSTEM</button>
+</div>
+
+<div id="game-container">
+  <canvas id="bg-canvas"></canvas>
+  <svg id="connectors-svg"></svg>
+  
+  <!-- SCENE INDICATOR -->
+  <div class="scene-indicator">
+    <div class="scene-label">CURRENT SCENE</div>
+    <div class="scene-name" id="sceneName">SUNSET CLOUDS</div>
+  </div>
+
+  <!-- LIVE THINKING LOG -->
+  <div class="thinking-log" id="thinkingLog">
+    <div class="thinking-log-header">🧠 LIVE THINKING LOG</div>
+    <div id="thinkingEntries"></div>
+  </div>
+
+  <!-- NEURAL TERMINAL -->
+  <div class="neural-terminal" id="neuralTerminal">
+    <div class="terminal-header" onclick="toggleTerminal()">
+      <div class="terminal-title">⚡ NEURAL ACTIVITY</div>
+      <button class="terminal-toggle" id="terminalToggle">−</button>
+    </div>
+    <div class="terminal-content" id="terminalContent"></div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <button class="tool-btn" onclick="toggleThinkingLog()">🧠 THINKING LOG</button>
+    <button class="tool-btn" onclick="advanceChapter()">🎬 NEXT SCENE</button>
+  </div>
+
+  <!-- CORE -->
+  <div class="core-container">
+    <div class="core-orb-wrapper">
+      <div class="core-orb" id="coreOrb"></div>
+      <div class="core-ring core-ring-1"></div>
+      <div class="core-ring core-ring-2"></div>
+      <div class="core-ring core-ring-3"></div>
+    </div>
+    <div class="core-label">NEXUS CORE</div>
+  </div>
+
+  <div id="sub-agents-container"></div>
+
+  <!-- CHAT -->
+  <div class="chat-container">
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-container">
+      <input type="text" class="chat-input" id="chatInput" placeholder="Communicate with NEXUS..." onkeypress="handleChatKey(event)">
+      <button class="chat-send" onclick="sendMessage()">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ AUDIO ============
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playTone(freq, duration, type = 'sine', volume = 0.1) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+function playClick() { playTone(800, 0.08, 'square', 0.05); }
+function playSuccess() { 
+  playTone(523, 0.1); setTimeout(() => playTone(659, 0.1), 100);
+  setTimeout(() => playTone(784, 0.15), 200);
+}
+
+// ============ CINEMATIC SCENES ============
+const scenes = [
+  {
+    name: 'SUNSET CLOUDS',
+    colors: ['#1a0533', '#4a1a6b', '#ff6b35', '#ffd700', '#ff8c42'],
+    draw: (ctx, w, h, time) => {
+      // Sun
+      const sunX = w * 0.7;
+      const sunY = h * 0.4;
+      const sunGradient = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 100);
+      sunGradient.addColorStop(0, 'rgba(255, 215, 0, 1)');
+      sunGradient.addColorStop(0.5, 'rgba(255, 107, 53, 0.5)');
+      sunGradient.addColorStop(1, 'rgba(255, 107, 53, 0)');
+      ctx.fillStyle = sunGradient;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 100, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Clouds
+      for (let i = 0; i < 15; i++) {
+        const x = (time * 0.02 + i * 120) % (w + 300) - 150;
+        const y = h * 0.5 + Math.sin(time * 0.001 + i) * 40 + i * 20;
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, 120);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, 120, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  },
+  {
+    name: 'BIOLUMINESCENT FOREST',
+    colors: ['#000a1a', '#001a33', '#003366', '#006644', '#00ff88'],
+    draw: (ctx, w, h, time) => {
+      // Ground
+      ctx.fillStyle = 'rgba(0, 20, 10, 0.8)';
+      ctx.fillRect(0, h * 0.7, w, h * 0.3);
+      
+      // Trees
+      for (let i = 0; i < 12; i++) {
+        const x = i * (w / 12) + 50;
+        const treeHeight = 200 + Math.sin(i * 0.8) * 80;
+        const y = h * 0.7;
+        
+        // Trunk
+        ctx.fillStyle = 'rgba(0, 30, 20, 0.9)';
+        ctx.fillRect(x - 10, y - treeHeight, 20, treeHeight);
+        
+        // Glowing leaves
+        const glowIntensity = 0.3 + Math.sin(time * 0.002 + i) * 0.2;
+        const colors = ['#00ff88', '#00d4ff', '#7b2cbf', '#ff006e'];
+        const color = colors[i % colors.length];
+        
+        for (let j = 0; j < 8; j++) {
+          const leafX = x + Math.cos(j * 0.8) * 40;
+          const leafY = y - treeHeight + Math.sin(j * 0.8) * 30;
+          const gradient = ctx.createRadialGradient(leafX, leafY, 0, leafX, leafY, 30);
+          gradient.addColorStop(0, color + Math.floor(glowIntensity * 255).toString(16).padStart(2, '0'));
+          gradient.addColorStop(1, color + '00');
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(leafX, leafY, 30, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      
+      // Floating particles
+      for (let i = 0; i < 50; i++) {
+        const x = (time * 0.01 + i * 37) % w;
+        const y = (time * 0.005 + i * 23) % h;
+        const size = 2 + Math.sin(time * 0.01 + i) * 1;
+        ctx.fillStyle = `rgba(0, 255, 136, ${0.3 + Math.sin(time * 0.01 + i) * 0.2})`;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  },
+  {
+    name: 'CRYSTAL CAVE',
+    colors: ['#0a0015', '#1a0533', '#4a1a6b', '#7b2cbf', '#aa00ff'],
+    draw: (ctx, w, h, time) => {
+      // Cave walls
+      ctx.fillStyle = 'rgba(20, 5, 40, 0.9)';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      for (let x = 0; x <= w; x += 50) {
+        ctx.lineTo(x, 100 + Math.sin(x * 0.01) * 50);
+      }
+      ctx.lineTo(w, 0);
+      ctx.closePath();
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+      for (let x = 0; x <= w; x += 50) {
+        ctx.lineTo(x, h - 100 - Math.sin(x * 0.01) * 50);
+      }
+      ctx.lineTo(w, h);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Crystals
+      const crystalColors = ['#00d4ff', '#7b2cbf', '#ff006e', '#00ff88', '#ffaa00'];
+      for (let i = 0; i < 20; i++) {
+        const x = (i * 137) % w;
+        const y = h / 2 + Math.sin(i * 1.5) * 150;
+        const height = 60 + Math.sin(i * 0.7) * 30;
+        const color = crystalColors[i % crystalColors.length];
+        const glow = 0.4 + Math.sin(time * 0.003 + i) * 0.3;
+        
+        // Crystal shape
+        ctx.fillStyle = color + Math.floor(glow * 255).toString(16).padStart(2, '0');
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 15, y + height);
+        ctx.lineTo(x + 15, y + height);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Glow
+        const gradient = ctx.createRadialGradient(x, y + height/2, 0, x, y + height/2, 40);
+        gradient.addColorStop(0, color + '80');
+        gradient.addColorStop(1, color + '00');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y + height/2, 40, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Water reflection
+      ctx.fillStyle = 'rgba(0, 212, 255, 0.1)';
+      ctx.fillRect(0, h * 0.85, w, h * 0.15);
+    }
+  },
+  {
+    name: 'AURORA SKY CITY',
+    colors: ['#000a1a', '#001a33', '#003366', '#006644', '#00ff88'],
+    draw: (ctx, w, h, time) => {
+      // Aurora
+      for (let i = 0; i < 5; i++) {
+        ctx.strokeStyle = `rgba(0, 255, 136, ${0.2 - i * 0.03})`;
+        ctx.lineWidth = 30 - i * 5;
+        ctx.beginPath();
+        for (let x = 0; x < w; x += 20) {
+          const y = h * 0.3 + i * 30 + Math.sin(x * 0.005 + time * 0.001 + i) * 50;
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      
+      // Floating buildings
+      for (let i = 0; i < 8; i++) {
+        const x = i * (w / 8) + 50;
+        const buildingHeight = 150 + Math.sin(i * 0.8) * 50;
+        const floatY = Math.sin(time * 0.001 + i) * 20;
+        const y = h * 0.5 - buildingHeight + floatY;
+        
+        // Building
+        ctx.fillStyle = 'rgba(0, 50, 100, 0.8)';
+        ctx.fillRect(x, y, 60, buildingHeight);
+        
+        // Windows
+        for (let j = 0; j < 6; j++) {
+          const windowY = y + 20 + j * 25;
+          const lit = Math.sin(time * 0.002 + i + j) > 0;
+          ctx.fillStyle = lit ? '#00d4ff' : '#001a33';
+          ctx.fillRect(x + 10, windowY, 12, 15);
+          ctx.fillRect(x + 38, windowY, 12, 15);
+        }
+        
+        // Glow underneath
+        const gradient = ctx.createRadialGradient(x + 30, y + buildingHeight, 0, x + 30, y + buildingHeight, 80);
+        gradient.addColorStop(0, 'rgba(0, 212, 255, 0.3)');
+        gradient.addColorStop(1, 'rgba(0, 212, 255, 0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x + 30, y + buildingHeight, 80, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Stars
+      for (let i = 0; i < 100; i++) {
+        const x = (i * 97) % w;
+        const y = (i * 53) % (h * 0.4);
+        const twinkle = 0.5 + Math.sin(time * 0.005 + i) * 0.5;
+        ctx.fillStyle = `rgba(255, 255, 255, ${twinkle})`;
+        ctx.fillRect(x, y, 2, 2);
+      }
+    }
+  },
+  {
+    name: 'ALIEN DESERT',
+    colors: ['#1a0a2e', '#3d1a5c', '#6b2fa0', '#ff6b35', '#ffd700'],
+    draw: (ctx, w, h, time) => {
+      // Giant sun/moon
+      const sunX = w * 0.8;
+      const sunY = h * 0.3;
+      const sunGradient = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 150);
+      sunGradient.addColorStop(0, 'rgba(255, 215, 0, 1)');
+      sunGradient.addColorStop(0.3, 'rgba(255, 107, 53, 0.8)');
+      sunGradient.addColorStop(1, 'rgba(107, 47, 160, 0)');
+      ctx.fillStyle = sunGradient;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 150, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Sand dunes
+      for (let layer = 0; layer < 4; layer++) {
+        ctx.fillStyle = `rgba(107, 47, 160, ${0.3 + layer * 0.15})`;
+        ctx.beginPath();
+        ctx.moveTo(0, h);
+        for (let x = 0; x <= w; x += 30) {
+          const y = h * 0.6 + layer * 40 + Math.sin(x * 0.01 + time * 0.001 + layer) * 30;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(w, h);
+        ctx.closePath();
+        ctx.fill();
+      }
+      
+      // Alien structures
+      for (let i = 0; i < 5; i++) {
+        const x = i * (w / 5) + 100;
+        const structureHeight = 100 + Math.sin(i * 1.2) * 50;
+        const y = h * 0.6 - structureHeight;
+        
+        // Structure
+        ctx.fillStyle = 'rgba(61, 26, 92, 0.9)';
+        ctx.beginPath();
+        ctx.moveTo(x, y + structureHeight);
+        ctx.lineTo(x + 20, y);
+        ctx.lineTo(x + 40, y);
+        ctx.lineTo(x + 60, y + structureHeight);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Glowing orb on top
+        const orbGlow = 0.5 + Math.sin(time * 0.003 + i) * 0.3;
+        const gradient = ctx.createRadialGradient(x + 30, y - 10, 0, x + 30, y - 10, 20);
+        gradient.addColorStop(0, `rgba(0, 255, 136, ${orbGlow})`);
+        gradient.addColorStop(1, 'rgba(0, 255, 136, 0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x + 30, y - 10, 20, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Floating rocks
+      for (let i = 0; i < 8; i++) {
+        const x = (time * 0.02 + i * 150) % (w + 100) - 50;
+        const y = h * 0.4 + Math.sin(time * 0.002 + i) * 30;
+        ctx.fillStyle = 'rgba(61, 26, 92, 0.7)';
+        ctx.beginPath();
+        ctx.ellipse(x, y, 20, 15, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+];
+
+let currentScene = 0;
+
+// ============ GAME START ============
+function startGame() {
+  playSuccess();
+  document.getElementById('intro-screen').classList.add('fade-out');
+  setTimeout(() => {
+    document.getElementById('game-container').classList.add('active');
+    initBackground();
+    initSubAgents();
+    initConnectors();
+    addAgentMessage("Welcome, Captain. NEXUS systems initialized. All modules online.");
+    addTerminalLine('system', 'NEXUS Core initialized');
+    addTerminalLine('system', 'All agents online');
+    addTerminalLine('scene', `Scene loaded: ${scenes[0].name}`);
+    startAgentAutonomy();
+  }, 2000);
+}
+
+// ============ DYNAMIC BACKGROUND ============
+const canvas = document.getElementById('bg-canvas');
+const ctx = canvas.getContext('2d');
+let time = 0;
+
+function initBackground() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  animateBackground();
+}
+
+function animateBackground() {
+  const scene = scenes[currentScene];
+  
+  // Gradient background
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  scene.colors.forEach((color, i) => {
+    gradient.addColorStop(i / (scene.colors.length - 1), color);
+  });
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Scene-specific drawing
+  scene.draw(ctx, canvas.width, canvas.height, time);
+  
+  time++;
+  requestAnimationFrame(animateBackground);
+}
+
+function advanceChapter() {
+  currentScene = (currentScene + 1) % scenes.length;
+  playSuccess();
+  document.getElementById('sceneName').textContent = scenes[currentScene].name;
+  addAgentMessage(`🎬 **Scene Changed**: ${scenes[currentScene].name}`);
+  addTerminalLine('scene', `Scene transition: ${scenes[currentScene].name}`);
+  addThinkingEntry(`Loading cinematic scene: ${scenes[currentScene].name}`);
+}
+
+// ============ SUB-AGENTS ============
+const subAgents = [
+  { name: 'Navigation', icon: '🧭', color: '#00d4ff', id: 'nav' },
+  { name: 'Security', icon: '️', color: '#ff4444', id: 'sec' },
+  { name: 'Engineering', icon: '⚙️', color: '#ffaa00', id: 'eng' },
+  { name: 'Research', icon: '', color: '#00ff88', id: 'res' },
+  { name: 'Communications', icon: '📡', color: '#aa00ff', id: 'com' },
+  { name: 'Life Support', icon: '🌱', color: '#88ff00', id: 'life' }
+];
+
+function initSubAgents() {
+  const container = document.getElementById('sub-agents-container');
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight / 2;
+  const radius = 320;
+
+  subAgents.forEach((agent, i) => {
+    const angle = (i / subAgents.length) * Math.PI * 2 - Math.PI / 2;
+    const x = centerX + Math.cos(angle) * radius - 35;
+    const y = centerY + Math.sin(angle) * radius - 35;
+
+    const div = document.createElement('div');
+    div.className = 'sub-agent';
+    div.id = `agent-${agent.id}`;
+    div.style.left = x + 'px';
+    div.style.top = y + 'px';
+    div.style.borderColor = agent.color;
+    div.style.color = agent.color;
+    div.innerHTML = `
+      <div class="sub-agent-icon">${agent.icon}</div>
+      <div class="sub-agent-label">${agent.name}</div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function initConnectors() {
+  const svg = document.getElementById('connectors-svg');
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight / 2;
+  const radius = 320;
+
+  subAgents.forEach((agent, i) => {
+    const angle = (i / subAgents.length) * Math.PI * 2 - Math.PI / 2;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', centerX);
+    line.setAttribute('y1', centerY);
+    line.setAttribute('x2', x);
+    line.setAttribute('y2', y);
+    line.setAttribute('class', 'connector-line');
+    line.setAttribute('stroke', agent.color);
+    line.setAttribute('id', `connector-${agent.id}`);
+    svg.appendChild(line);
+  });
+}
+
+// ============ LIVE THINKING LOG ============
+function addThinkingEntry(text) {
+  const entries = document.getElementById('thinkingEntries');
+  const entry = document.createElement('div');
+  entry.className = 'thinking-entry';
+  entry.innerHTML = `
+    <div class="thinking-time">${new Date().toLocaleTimeString()}</div>
+    <div class="thinking-text">${text}</div>
+  `;
+  entries.insertBefore(entry, entries.firstChild);
+  while (entries.children.length > 10) entries.removeChild(entries.lastChild);
+}
+
+function toggleThinkingLog() {
+  playClick();
+  document.getElementById('thinkingLog').classList.toggle('active');
+}
+
+// ============ NEURAL TERMINAL ============
+function addTerminalLine(type, text) {
+  const content = document.getElementById('terminalContent');
+  const line = document.createElement('div');
+  line.className = `terminal-line ${type}`;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+  content.insertBefore(line, content.firstChild);
+  while (content.children.length > 50) content.removeChild(content.lastChild);
+}
+
+function toggleTerminal() {
+  const terminal = document.getElementById('neuralTerminal');
+  const toggle = document.getElementById('terminalToggle');
+  terminal.classList.toggle('minimized');
+  toggle.textContent = terminal.classList.contains('minimized') ? '+' : '−';
+}
+
+// ============ AGENT AUTONOMY ============
+const agentMessages = [
+  { from: 'sec', to: 'nav', text: 'Warning: Unusual energy signature detected' },
+  { from: 'eng', to: 'life', text: 'Power grid stable, life support at 98%' },
+  { from: 'res', to: 'com', text: 'Decoded signal from unknown source' },
+  { from: 'nav', to: 'eng', text: 'Requesting additional power for course correction' },
+  { from: 'life', to: 'res', text: 'Atmospheric analysis complete' },
+  { from: 'com', to: 'sec', text: 'Incoming transmission, verifying authenticity' }
+];
+
+function startAgentAutonomy() {
+  setInterval(() => {
+    if (Math.random() > 0.7) {
+      const msg = agentMessages[Math.floor(Math.random() * agentMessages.length)];
+      const fromAgent = document.getElementById(`agent-${msg.from}`);
+      const toAgent = document.getElementById(`agent-${msg.to}`);
+      const connector = document.getElementById(`connector-${msg.from}`);
+      
+      fromAgent.classList.add('active');
+      toAgent.classList.add('active');
+      connector.classList.add('active');
+      
+      addTerminalLine('agent', `${msg.from.toUpperCase()} → ${msg.to.toUpperCase()}: ${msg.text}`);
+      addThinkingEntry(`${msg.from} communicating with ${msg.to}`);
+      
+      setTimeout(() => {
+        fromAgent.classList.remove('active');
+        toAgent.classList.remove('active');
+        connector.classList.remove('active');
+      }, 3000);
+    }
+  }, 8000);
+}
+
+// ============ CHAT ============
+function handleChatKey(e) {
+  if (e.key === 'Enter') sendMessage();
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  addUserMessage(msg);
+  input.value = '';
+  playClick();
+  
+  const coreOrb = document.getElementById('coreOrb');
+  coreOrb.classList.add('thinking');
+  
+  addThinkingEntry(`Processing: "${msg}"`);
+  addTerminalLine('api-call', `POST /chat/completions`);
+  addTerminalLine('token', `Tokens: ~${msg.length * 0.3} input`);
+  
+  setTimeout(() => {
+    const responses = [
+      "Analyzing your request, Captain...",
+      "Processing data from all systems...",
+      "Consulting with specialized agents...",
+      "Formulating response based on available data..."
+    ];
+    const response = responses[Math.floor(Math.random() * responses.length)];
+    
+    addThinkingEntry(response);
+    addTerminalLine('system', response);
+    
+    setTimeout(() => {
+      coreOrb.classList.remove('thinking');
+      addAgentMessage(response);
+      addTerminalLine('token', `Tokens: ~${response.length * 0.3} output`);
+      addTerminalLine('system', 'Response delivered');
+      playSuccess();
+    }, 1500);
+  }, 500);
+}
+
+function addUserMessage(msg) {
+  const container = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'chat-message user';
+  div.textContent = msg;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function addAgentMessage(msg) {
+  const container = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'chat-message agent';
+  div.innerHTML = msg.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+// ============ RESIZE ============
+window.addEventListener('resize', () => {
+  if (canvas.width) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+});
+</script>
+
+</body>
+</html>
