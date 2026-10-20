@@ -1,6 +1,6 @@
 # ثلاثة اقتراحات لعالم NEXUS (21 أكتوبر 2026، 2:46 بالليل) — بدون ترشيح
 
-أحمد طلب: راجعي كل النقاش والحلول وأعطيني ثلاثة اقتراحات مختلفة بالتفاصيل على شكل أكواد، بدون ترشيح أحدها. هذا الملف هو الثلاثة، بنفس العمق لكل واحد. القرار لأحمد. (مرحلة أفكار: ما ندخل قواعد المشروع ولا "هل يُقاد من Claude Code".)
+أحمد طلب: راجعي كل النقاش والحلول وأعطيني ثلاثة اقتراحات مختلفة بالتفاصيل على شكل أكواد، بدون ترشيح أحدها. ثم طلب إعادتها **بدون خيار الكونسولات** (بلايستيشن وغيرها كانت مجرد سؤال). هذا الملف هو النسخة المعدّلة، بنفس العمق لكل واحد. القرار لأحمد. (مرحلة أفكار: ما ندخل قواعد المشروع ولا "هل يُقاد من Claude Code".)
 
 ## المشترك بين الثلاثة (الأعصاب لا تتغير مهما كان الجسد)
 
@@ -24,7 +24,7 @@ nervous_system:                      # من وثيقة Settings & Control Center
 
 ## الاقتراح A — عالم ويب سينمائي (WebGPU / Three.js)
 
-العالم يُرسم بتقنيات الويب الحديثة داخل غلاف سطح مكتب، ونفس البناء يشتغل في أي متصفح: اللابتوب، التلفزيون، Steam Machine، الجوال.
+العالم يُرسم بتقنيات الويب الحديثة داخل غلاف سطح مكتب، ونفس البناء يشتغل في أي متصفح: اللابتوب، التلفزيون، الجوال.
 
 ```yaml
 proposal: A — Cinematic Web World
@@ -38,7 +38,7 @@ world:
               dashed pulse on edges (stroke-dashoffset), reverse for rollback, paused while waiting
   core: orb shader with the 7 states + personality presets (speed, glow, camera behaviour)
   fleet_view: zoom-out shows core + agents on a circle, lines carry each agent's colour (currentColor)
-shell: Tauri on Windows (laptop on TV + Xbox controller) ; same build in any browser
+shell: Tauri on Windows (laptop, or laptop on the TV with a gamepad) ; same build in any browser (phone for status + approvals)
 brain_link: WebSocket to Core / Hermes (events_poll bridge) ; AG-UI style event JSON
 voice: LiveKit Agents UI (Aura visualizer) later ; mic from laptop or phone
 audio: Web Audio tones (click/success/fail) + Openverse/Kenney ambient layers via Howler
@@ -79,7 +79,7 @@ control_from_outside:
 brain_link: WebSocket plugin to Core / Hermes ; or inbound via Remote Control
 voice: LiveKit (web overlay) later ; controller + mic
 audio: MetaSounds layers (ambient / UI / agent voice), each with its own volume
-packaging: Windows build -> laptop on TV ; later Xbox "Project Helix" (Windows console, 2027+) ; Steam Machine via Proton
+packaging: Windows build -> laptop (or laptop on the TV with a gamepad)
 hardware: dedicated GPU (RTX 3060 class or better) ; 3 quality tiers ; big project (tens of GB)
 cost: engine free for this use ; some Fab assets paid
 ceiling: highest realism ; heaviest build and hardware
@@ -109,7 +109,7 @@ curl -X PUT http://localhost:30010/remote/object/property \
 
 ## الاقتراح C — عالم في السحابة يُبث لأي شاشة (Pixel Streaming)
 
-نفس عالم المحرك، لكن يُرسم على كرت شاشة مستأجر في السحابة ويوصلك كفيديو تفاعلي لأي جهاز: اللابتوب، الجوال، التلفزيون، Steam Machine، Ally. العقل والعالم في نفس المكان، فما فيه تأخير بينهما.
+نفس عالم المحرك، لكن يُرسم على كرت شاشة مستأجر في السحابة ويوصلك كفيديو تفاعلي لأي جهاز: اللابتوب، الجوال، التلفزيون. العقل والعالم في نفس المكان، فما فيه تأخير بينهما.
 
 ```yaml
 proposal: C — Cloud World, streamed everywhere
@@ -118,7 +118,7 @@ brain: Core + Hermes + n8n on the same VM (or a small always-on VM) ; local even
 files: stay on the laptop ; reached through a private tunnel (Tailscale) or synced folder
 voice: LiveKit Cloud ; mic from whatever device is open
 settings: Architect Control web page -> VM (Remote Control + config service)
-devices: laptop, phone (status + approvals), TV, Steam Machine, Ally X — all just screens
+devices: laptop, phone (status + approvals), TV — all just screens
 hardware: nothing local
 cost: GPU VM only while the world is open (~$0.5–2 / hour, auto-stop when idle) + small VM for the brain
 latency: 30–80 ms on good internet (UAE fine) ; video compression softens fine detail
@@ -149,7 +149,7 @@ policy:
 | الواقعية | متوسطة إلى عالية | الأعلى | الأعلى |
 | الجهاز المطلوب | أي لابتوب | كرت شاشة قوي | ولا شي |
 | التكلفة الشهرية | 0 | 0 | ساعات GPU |
-| يشتغل على الجوال/التلفزيون/الكونسول | نعم (متصفح) | ويندوز فقط (وXbox 2027) | نعم (أي متصفح) |
+| يشتغل على الجوال/التلفزيون | نعم (متصفح) | ويندوز (اللابتوب، أو على التلفزيون) | نعم (أي متصفح) |
 | التحكم الحي من برا | WebSocket + كونفق | Remote Control API | Remote Control عبر السحابة |
 | الوقت للمشهد الأول | الأقصر | الأطول | متوسط (+ إعداد السحابة) |
 | المخاطر | سقف الواقعية | ثقل المشروع والجهاز | التأخير والفاتورة والخصوصية |
