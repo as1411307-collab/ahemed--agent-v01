@@ -14,3 +14,7 @@ web-build/
 *.log
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
+
+# impeccable downloads its platform engine binary (~20MB) into this folder; the launcher re-fetches it
+# per platform and verifies the hash, so the Linux copy from GitHub Actions does not belong in git.
+.claude/skills/impeccable/scripts/bin/
