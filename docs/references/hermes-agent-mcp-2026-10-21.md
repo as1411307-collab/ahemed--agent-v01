@@ -1,6 +1,6 @@
-# Hermes Agent — طريقة تعامله مع MCP (مرجع لقسم "MCP Center" و"Tool Registry" في وثيقة أحمد)
+# Hermes Agent — طريقة تعامله مع MCP والأدوات (مرجع لأقسام "MCP Center" و"Tool Registry" و"Presets" في وثيقة أحمد)
 
-المصدر: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/mcp.md (أرسله أحمد 21 أكتوبر 2:16 بالليل). Hermes Agent هو الوكيل اللي ذكره أحمد في وثيقة الإعدادات ("Hermes أو أي نظام خارجي أضيفه لاحقاً") وفي مراجع 13 أكتوبر. هذا الملف يجمع **الأنماط** اللي تنفعنا من طريقته، بغض النظر هل نستخدم Hermes نفسه أو لا.
+المصادر: صفحة MCP https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/mcp.md وصفحة الأدوات https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/tools.md (أرسلهما أحمد 21 أكتوبر، 2:16 و2:20 بالليل). Hermes Agent هو الوكيل اللي ذكره أحمد في وثيقة الإعدادات ("Hermes أو أي نظام خارجي أضيفه لاحقاً") وفي مراجع 13 أكتوبر. هذا الملف يجمع **الأنماط** اللي تنفعنا من طريقته، بغض النظر هل نستخدم Hermes نفسه أو لا.
 
 ## 1) شكل إدخال خادم MCP في الكونفق (جاهز يُنسخ كمخطط لـ`integrations[]`)
 
@@ -74,3 +74,56 @@ mcp_servers:
 4. سطح موافقة واحد لكل سؤال يحتاج إنساناً (موافقات الأدوات وأسئلة الخوادم معاً).
 5. حواجز الـsampling كقالب لحدود التكلفة.
 6. `events_poll` / `permissions_respond` كمرجع لشكل واجهة الأحداث بين الوكيل والعالم.
+
+---
+
+# صفحة الأدوات (tools.md) — وش فيها ينفعنا
+
+## 9) تصنيف الأدوات الجاهز (يصلح كتبويب لـTool Registry)
+
+- **ويب:** `web_search`، `web_extract`. **بحث X:** `x_search` (مطفي افتراضياً، يحتاج مفتاح xAI).
+- **طرفية وملفات:** `terminal`، `process`، `read_file`، `patch`.
+- **متصفح:** `browser_navigate`، `browser_snapshot`، `browser_vision` (نص + رؤية).
+- **وسائط:** `vision_analyze`، `image_generate`، `text_to_speech`.
+- **تنسيق الوكيل:** `todo` (خطة)، **`clarify`** (يسأل المستخدم سؤالاً توضيحياً قبل ما يكمل)، `execute_code`، `delegate_task` (وكلاء فرعيون).
+- **ذاكرة واسترجاع:** `memory`، `session_search`.
+- **أتمتة:** `cronjob` بإجراءات create / list / update / pause / resume / run / remove.
+- **تكاملات:** `ha_*` (Home Assistant) وأدوات خوادم MCP.
+
+`clarify` كأداة مستقلة فكرة تناسب أحمد تماماً ("افهمني أولاً"): سؤال الوكيل يطلع كبطاقة من نفس نوع بطاقة الموافقة، مب كرسالة شات عادية.
+
+## 10) مجموعات الأدوات (Toolsets) = أساس الـPresets والصلاحيات
+
+- مجموعات مسمّاة تُختار لكل جلسة أو منصة: `hermes chat --toolsets "web,terminal"`، و`hermes tools` يضبطها تفاعلياً لكل منصة.
+- الأسماء: `web`، `search`، `terminal`، `file`، `browser`، `vision`، `image_gen`، `skills`، `tts`، `todo`، `memory`، `session_search`، `cronjob`، `code_execution`، `delegation`، `clarify`، `homeassistant`، `messaging`، `spotify`، `discord`، `discord_admin`، `debugging`، و**`safe`** (مجموعة آمنة).
+- قوالب لكل منصة (`hermes-cli`، `hermes-telegram`) + مجموعات ديناميكية `mcp-<server>`.
+- عندنا: الـPreset (§25) = مجموعات أدوات + موديل + صلاحيات + مشهد، تنطبق مرة واحدة. ووجود مجموعة `safe` جاهزة يعطينا "مستوى الثقة: يشتغل لحاله في الآمن" من إعدادات أحمد.
+
+## 11) العمليات في الخلفية وزر الإيقاف
+
+- `terminal(command=..., background=true)` يرجّع `session_id` و`pid`، وأداة `process` تديرها: `list`، `poll`، `wait`، `log`، `kill`، `write` (إرسال إدخال)، و`pty=true` للأدوات التفاعلية.
+- هذا بالضبط اللي يحتاجه العالم: `list`/`poll`/`log` تغذّي "شو يسوي الوكيل الحين"، و`kill` هو زر الإيقاف الفوري لكل عملية.
+
+## 12) وين يشتغل الوكيل (Terminal backends) وحدوده
+
+| الخلفية | الاستخدام |
+|---|---|
+| `local` (افتراضي) | تطوير ومهام موثوقة |
+| `docker` | أمان وإعادة إنتاج؛ حاوية واحدة طويلة العمر وكل نداءات الطرفية والملفات والكود تمر عبرها |
+| `ssh` | عزل: يبعد الوكيل عن كوده (الموصى به للأمان) |
+| `singularity` / `modal` / `daytona` / `vercel_sandbox` | HPC، سيرفرلس، بيئات بعيدة، microVM بلقطات |
+
+إعداد أساسي: `backend`، `cwd`، `timeout: 180`. موارد الحاوية: `container_cpu: 1`، `container_memory: 5120`، `container_disk: 51200`، `container_persistent: true`. أمان الحاوية: جذر للقراءة فقط، إسقاط كل صلاحيات Linux، منع رفع الصلاحيات، حد 256 عملية، عزل namespaces، ومساحة العمل على volumes، مع قائمة سماح صريحة لمتغيرات البيئة (`terminal.docker_forward_env`). نفس روح `WORKSPACE_ROOT` عندنا بس على مستوى النظام كله؛ "وين يشتغل الوكيل" يستاهل يكون إعداداً في GLOBAL SYSTEM.
+
+## 13) رسائل صادقة جاهزة (Tool result annotations)
+
+- رموز الخروج تتحول لملاحظة مقروءة: `-9`/`137` = "قُتل بـSIGKILL، غالباً نفاد الذاكرة"، وكذا segfault وabort وSIGTERM وbroken pipe وحدود الموارد.
+- `read_file` يكشف UTF-16 ويحوّله لـUTF-8 مع تنبيه، ويرفض الملفات فوق 10MB والثنائية.
+- نمط ممتاز لواجهتنا: الفشل يطلع بجملة إنسانية، مب رقم.
+
+## 14) ملاحظات تشغيلية
+
+- نداءات الطرفية تشتغل بدون TTY؛ ملفات تهيئة الشل الثقيلة (nvm، tmux، echo) تسبب تعليق أو مهلة؛ النصيحة: `return` مبكر للجلسات غير التفاعلية.
+- `sudo` يطلب كلمة سر تُحفظ للجلسة أو من `SUDO_PASSWORD` في `.env`.
+- Tool Gateway (مدفوع من Nous) يعطي بحث وصور وTTS ومتصفح بدون مفاتيح منفصلة؛ ما نحتاجه.
+- الصفحة ما تغطي الموافقات والصلاحيات لكل أداة (في صفحة ثانية)، ولا التفويض بالتفصيل.
