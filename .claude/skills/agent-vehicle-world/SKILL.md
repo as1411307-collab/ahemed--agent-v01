@@ -1,8 +1,11 @@
-# فكرة: مركبة الوكيل (Agent Vehicle World) — مرجع، مب قرار
+---
+name: "agent-vehicle-world"
+description: "Build or continue Ahmed's agent front end as a game-like 3D world (مركبة الوكيل): a first-person cabin, agents as escort craft, zoom-out network view, day/night by real clock, in Unity on his laptop. Use whenever he mentions مركبة الوكيل, the cabin/المقصورة, the fleet/الأسطول, scenes/المشاهد, building the agent app as a game, Unity for the agent, or the operations room as a world, even without naming the skill."
+---
+
+# مركبة الوكيل (Agent Vehicle World)
 
 > بالعربي: هذا السكل هو مواصفات العالم اللي تبيه للوكيل، مكتوبة مرة وحدة عشان أي جلسة تبني عليها بدون ما تعيد الشرح.
-
-> **حالة هالملف (2026-10-20 الليل):** فكرة مطروحة، مب قرار. أحمد قال: "لا تعتمد على مركبة الفضاء، هي كانت مجرد فكرة وانت اعتمدها دايركت". المحفوظ منها كمرجع: الأسئلة الأربعة، جدول "الحدث → شو يصير في الواجهة"، خط الأصول، والممنوعات. أما المقصورة والأسطول والقصة فتبقى هنا كفكرة إلى أن يقرر أحمد شكل الواجهة. القرارات الفعلية في `docs/DECISIONS.md`.
 
 التطبيق مب شاشة فيها لوحات. التطبيق مكان أحمد جواه: قاعد داخل مقصورة مركبة الوكيل، وكل وكيل يربطه يصير مركبة صغيرة تطير جنبه، والروابط والمسارات بينهم هي لوحة العمليات الحية. لعبة مغامرات فيها مشاهد وقصة، بس اللي يحركها وكيل حقيقي.
 
