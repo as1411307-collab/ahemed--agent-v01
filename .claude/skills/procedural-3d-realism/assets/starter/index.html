@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Procedural 3D — starter</title>
+<style>
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  body{ background:#04060d; color:#f4f0e6; font-family:system-ui,sans-serif; overflow-x:hidden; }
+  #scene{ position:fixed; inset:0; width:100vw; height:100vh; display:block; z-index:0; }
+  /* scrollable sections so the journey has room to play out */
+  main{ position:relative; z-index:1; }
+  section{ min-height:100vh; display:flex; align-items:center; justify-content:center; text-align:center; padding:0 8vw; }
+  h1{ font-size:clamp(40px,9vw,120px); font-weight:300; letter-spacing:-.02em; }
+  p{ max-width:40ch; margin-top:1em; opacity:.7; font-size:clamp(15px,1.6vw,20px); line-height:1.6; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/jsm/"
+  }
+}
+</script>
+<!--
+  Three.js is vendored locally in ./vendor (no build step, no CDN). This whole
+  folder is self-contained — copy it and start a static server in it:
+      python3 -m http.server
+  See references/setup-and-renderer.md for how the vendoring works.
+-->
+</head>
+<body>
+<canvas id="scene"></canvas>
+<main>
+  <section><div><h1>A living world</h1><p>Scroll. Everything below is generated in real time — no images, no video.</p></div></section>
+  <section><div><h1>Into the night</h1><p>The light wheels around as you move through the page.</p></div></section>
+  <section><div><h1>Closer</h1><p>One scroll value choreographs the whole journey.</p></div></section>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>
