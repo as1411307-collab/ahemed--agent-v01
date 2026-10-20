@@ -14,7 +14,7 @@
 - V0_CONTRACT.md: العقد بين التطبيق والـCore، وpackages/contract يطابقه حرفيًا.
 - docs/VISION.md: للسياق فقط.
 - docs/DECISIONS.md: قرارات أحمد، الأحدث فوق ويفوز. docs/STATUS.md: وين وقفنا.
-- docs/SKILLS.md: فهرس سكلز التصميم والحركة والـ3D في `.claude/skills` ومتى يُستخدم كل واحد (التثبيت: `scripts/install-design-skills.ps1`). واجهة الوكيل الجديدة (عالم مركبة الوكيل) مواصفاتها في سكل `agent-vehicle-world`.
+- docs/SKILLS.md: فهرس سكلز التصميم والحركة والـ3D والرسم الحي والصوت في `.claude/skills` ومتى يُستخدم كل واحد (التثبيت: `scripts/install-design-skills.ps1`). الأفكار المطروحة للواجهة (مب قرارات) في `docs/ideas/`.
 - عند أي تعارض: docs/BUILD_PROMPT.md هو الحاكم لنطاق v0.1 (الكور)، وdocs/DECISIONS.md هو الحاكم للواجهة الجديدة.
 
 ## الستاك (محسوم)

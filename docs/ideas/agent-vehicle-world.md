@@ -1,13 +1,8 @@
----
-name: "agent-vehicle-world"
-description: "Build or continue Ahmed's agent front end as a game-like 3D world (مركبة الوكيل): a first-person cabin, agents as escort craft, zoom-out network view, day/night by real clock, built in the browser on his laptop with Three.js / React Three Fiber and the design skills in .claude/skills (Unity is a fallback only, see docs/DECISIONS.md). Use whenever he mentions مركبة الوكيل, the cabin/المقصورة, the fleet/الأسطول, scenes/المشاهد, building the agent app as a game, the 3D world for the agent, or the operations room as a world, even without naming the skill."
----
-
-# مركبة الوكيل (Agent Vehicle World)
+# فكرة: مركبة الوكيل (Agent Vehicle World) — مرجع، مب قرار
 
 > بالعربي: هذا السكل هو مواصفات العالم اللي تبيه للوكيل، مكتوبة مرة وحدة عشان أي جلسة تبني عليها بدون ما تعيد الشرح.
 
-> **تحديث 2026-10-20 (الليل):** أحمد قال "اضف جميع المهارات للتصميم ولا تتهرب وتعتمد على يونتي". المحرك الآن المتصفح على اللابتوب (Three.js / React Three Fiber + GSAP + post-processing + Rapier) بسكلز التصميم في `.claude/skills` (الفهرس: `docs/SKILLS.md`). كل ما تحت عن Unity صار مرجعاً فقط؛ المشاهد والقرارات والأسئلة الأربعة وجدول الأحداث وخط الأصول كلها باقية كما هي. التفصيل في `docs/DECISIONS.md` (الأحدث يفوز).
+> **حالة هالملف (2026-10-20 الليل):** فكرة مطروحة، مب قرار. أحمد قال: "لا تعتمد على مركبة الفضاء، هي كانت مجرد فكرة وانت اعتمدها دايركت". المحفوظ منها كمرجع: الأسئلة الأربعة، جدول "الحدث → شو يصير في الواجهة"، خط الأصول، والممنوعات. أما المقصورة والأسطول والقصة فتبقى هنا كفكرة إلى أن يقرر أحمد شكل الواجهة. القرارات الفعلية في `docs/DECISIONS.md`.
 
 التطبيق مب شاشة فيها لوحات. التطبيق مكان أحمد جواه: قاعد داخل مقصورة مركبة الوكيل، وكل وكيل يربطه يصير مركبة صغيرة تطير جنبه، والروابط والمسارات بينهم هي لوحة العمليات الحية. لعبة مغامرات فيها مشاهد وقصة، بس اللي يحركها وكيل حقيقي.
 
