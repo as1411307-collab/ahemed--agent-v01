@@ -35,8 +35,6 @@ $sources = @(
   @{ src = "gkren22/cinematic-3d-website";        note = "cinematic-3d-website: scroll-driven cinematic 3D sites (WebGPU/TSL, Theatre.js, GPU particles, godrays, bloom, film grain, sound design)" },
   @{ src = "gkren22/procedural-3d-realism";       note = "procedural-3d-realism: shading + lighting recipes, companion of the skill above" },
   @{ src = "agiwhitelist/auteur";                 note = "auteur: direct a website like a film - art direction lock, slopscan linter, motionqa (Playwright) gate, moodboard/refscout" },
-  @{ src = "tsogjavklann/awwwards-3d";            note = "awwwards-3d: scroll-driven 3D templates (room walkthrough on a spline camera, glass orb, post chain) - Three.js r170 + GSAP + Lenis" },
-  @{ src = "zyliu0/3d-frontend";                  note = "3d-frontend: single-file scroll-driven 3D pages (Three.js + GSAP ScrollTrigger, camera paths)" },
   @{ src = "emilkowalski/skills";                 note = "emil: 15 animation skills (animate, review/improve animations, animation-performance, apple-design, mobile-native, break-ui, prototype)" },
   @{ src = "Dammyjay93/interface-design";         note = "interface-design: saves design decisions to .interface-design/system.md so later sessions stay consistent" },
   @{ src = "codeswithroh/tastemaker";             note = "tastemaker: grounds generated UI in reference images + a taste profile" }
@@ -44,7 +42,7 @@ $sources = @(
 
 # Selected skills from larger collections
 $selected = @(
-  @{ src = "vercel-labs/agent-skills";            names = @("web-design-guidelines","react-best-practices","react-native-guidelines","react-view-transitions","composition-patterns"); note = "Vercel: 100+ UI rules audit, React/RN performance, view transitions" },
+  @{ src = "vercel-labs/agent-skills";            names = @("web-design-guidelines","vercel-react-best-practices","vercel-react-native-skills","vercel-react-view-transitions","vercel-composition-patterns"); note = "Vercel: 100+ UI rules audit, React/RN performance, view transitions" },
   @{ src = "anthropics/skills";                   names = @("webapp-testing");  note = "Anthropic: Playwright screenshots + browser logs so Claude checks its own screens" },
   @{ src = "sickn33/antigravity-awesome-skills";  names = @("3d-web-experience","fixing-motion-performance"); note = "3D web scenes review + motion performance fixes" }
 )
@@ -91,6 +89,47 @@ Write-Host ""
 Write-Host "==> nextlevelbuilder/ui-ux-pro-max-skill  (ui-ux-pro-max: design-system generator, 79 styles, 192 palettes, 74 font pairings, MIT)" -ForegroundColor Cyan
 & npx --yes ui-ux-pro-max-cli init --ai claude
 if ($LASTEXITCODE -eq 0) { $ok += "nextlevelbuilder/ui-ux-pro-max-skill" } else { $failed += "nextlevelbuilder/ui-ux-pro-max-skill" }
+
+# Two sources the skills CLI rejects for format reasons (upstream issues, not ours) - installed by hand:
+#  - tsogjavklann/awwwards-3d: SKILL.md description is an unquoted YAML scalar containing ':'
+#    (scroll-driven 3D templates: room walkthrough on a spline camera, glass orb, post chain - Three.js r170 + GSAP + Lenis)
+#  - zyliu0/3d-frontend: the skill file is named 3D-frontend.md instead of SKILL.md
+#    (single-file scroll-driven 3D pages: Three.js + GSAP ScrollTrigger, camera paths)
+# Shallow clone, copy without .git and the duplicated docs/ gallery, rewrite the frontmatter as a folded block scalar.
+function Install-ManualSkill($repo, $folder, $skillFile) {
+  Write-Host ""
+  Write-Host ("==> " + $repo + "  (manual install: " + $folder + ")") -ForegroundColor Cyan
+  $tmp = Join-Path ([IO.Path]::GetTempPath()) ("skill-" + [guid]::NewGuid().ToString("N"))
+  & git clone -q --depth 1 ("https://github.com/" + $repo + ".git") $tmp
+  if ($LASTEXITCODE -ne 0) { $script:failed += $repo; return }
+  $dest = Join-Path ".claude/skills" $folder
+  if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+  New-Item -ItemType Directory -Path $dest | Out-Null
+  Get-ChildItem $tmp -Force | Where-Object { $_.Name -notin @(".git", "docs", ".DS_Store") } | Copy-Item -Destination $dest -Recurse -Force
+  $skill = Join-Path $dest "SKILL.md"
+  if ($skillFile -ne "SKILL.md") { Move-Item (Join-Path $dest $skillFile) $skill -Force }
+  $text = Get-Content $skill -Raw -Encoding UTF8
+  $m = [regex]::Match($text, "(?s)^---\r?\n(.*?)\r?\n---\r?\n")
+  if (-not $m.Success) {
+    Write-Host ("  no frontmatter in " + $skill) -ForegroundColor Yellow
+    $script:failed += $repo; Remove-Item $tmp -Recurse -Force; return
+  }
+  $desc = ""; $lic = ""
+  foreach ($line in ($m.Groups[1].Value -split "\r?\n")) {
+    if ($line -match '^description:\s*(.*)$') { $desc = $Matches[1].Trim().Trim('"').Trim("'") }
+    elseif ($line -match '^license:\s*(.*)$') { $lic = $Matches[1].Trim() }
+  }
+  $desc = ($desc -replace '\s+', ' ')
+  $fm = "---`nname: $folder`ndescription: >-`n  $desc`n"
+  if ($lic) { $fm += "license: $lic`n" }
+  $fm += "---`n"
+  [IO.File]::WriteAllText((Resolve-Path $skill).Path, $fm + $text.Substring($m.Length), (New-Object Text.UTF8Encoding $false))
+  Remove-Item $tmp -Recurse -Force
+  Write-Host ("  fixed frontmatter: " + $skill)
+  $script:ok += $repo
+}
+Install-ManualSkill "tsogjavklann/awwwards-3d" "awwwards-3d" "SKILL.md"
+Install-ManualSkill "zyliu0/3d-frontend" "3d-frontend" "3D-frontend.md"
 
 Write-Host ""
 Write-Host "Installed:" -ForegroundColor Green

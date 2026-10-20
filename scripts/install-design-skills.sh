@@ -31,8 +31,6 @@ SOURCES=(
   "gkren22/cinematic-3d-website"
   "gkren22/procedural-3d-realism"
   "agiwhitelist/auteur"
-  "tsogjavklann/awwwards-3d"
-  "zyliu0/3d-frontend"
   "emilkowalski/skills"
   "Dammyjay93/interface-design"
   "codeswithroh/tastemaker"
@@ -40,7 +38,7 @@ SOURCES=(
 
 # Selected skills from larger collections (name list after the repo)
 SELECTED=(
-  "vercel-labs/agent-skills|web-design-guidelines react-best-practices react-native-guidelines react-view-transitions composition-patterns"
+  "vercel-labs/agent-skills|web-design-guidelines vercel-react-best-practices vercel-react-native-skills vercel-react-view-transitions vercel-composition-patterns"
   "anthropics/skills|webapp-testing"
   "sickn33/antigravity-awesome-skills|3d-web-experience fixing-motion-performance"
 )
@@ -77,6 +75,50 @@ if npx --yes impeccable install --providers=claude --scope=project </dev/null; t
 
 echo; echo "==> nextlevelbuilder/ui-ux-pro-max-skill"
 if npx --yes ui-ux-pro-max-cli init --ai claude </dev/null; then OK+=("nextlevelbuilder/ui-ux-pro-max-skill"); else FAILED+=("nextlevelbuilder/ui-ux-pro-max-skill"); fi
+
+# Two sources the skills CLI rejects for format reasons (upstream issues, not ours):
+#  - tsogjavklann/awwwards-3d: SKILL.md description is an unquoted YAML scalar containing ':'
+#  - zyliu0/3d-frontend: the skill file is named 3D-frontend.md instead of SKILL.md
+# Install them by hand: shallow clone, copy without .git and the duplicated docs/ gallery,
+# then rewrite the frontmatter as a folded block scalar so every YAML parser accepts it.
+manual_skill() {
+  local repo="$1" folder="$2" skillfile="$3" dest=".claude/skills/$2" tmp
+  tmp="$(mktemp -d)"
+  echo; echo "==> $repo (manual install: $folder)"
+  if ! git clone -q --depth 1 "https://github.com/$repo.git" "$tmp/src"; then
+    FAILED+=("$repo"); rm -rf "$tmp"; return
+  fi
+  rm -rf "$dest"; mkdir -p "$dest"
+  tar -C "$tmp/src" --exclude=.git --exclude=docs --exclude=.DS_Store -cf - . | tar -C "$dest" -xf -
+  if python3 -I - "$dest" "$skillfile" "$folder" <<'PY'
+import re, sys, pathlib
+dest, skillfile, name = sys.argv[1:4]
+d = pathlib.Path(dest)
+if skillfile != "SKILL.md":
+    (d / skillfile).replace(d / "SKILL.md")
+p = d / "SKILL.md"
+text = p.read_text(encoding="utf-8")
+m = re.match(r"---\r?\n(.*?)\r?\n---\r?\n", text, re.S)
+if not m:
+    sys.exit("no frontmatter in " + str(p))
+fields = {}
+for line in m.group(1).splitlines():
+    k, sep, v = line.partition(":")
+    if sep and k.strip() and not line[:1].isspace():
+        fields[k.strip()] = v.strip()
+desc = " ".join(fields.get("description", "").strip().strip('"').strip("'").split())
+out = ["---", "name: " + name, "description: >-", "  " + desc]
+if fields.get("license"):
+    out.append("license: " + fields["license"])
+out.append("---")
+p.write_text("\n".join(out) + "\n" + text[m.end():], encoding="utf-8")
+print("  fixed frontmatter: " + str(p))
+PY
+  then OK+=("$repo"); else FAILED+=("$repo"); fi
+  rm -rf "$tmp"
+}
+manual_skill tsogjavklann/awwwards-3d awwwards-3d SKILL.md
+manual_skill zyliu0/3d-frontend 3d-frontend 3D-frontend.md
 
 echo; echo "Installed:"; printf '  + %s\n' "${OK[@]}"
 if [ ${#FAILED[@]} -gt 0 ]; then echo "Failed:"; printf '  - %s\n' "${FAILED[@]}"; fi
