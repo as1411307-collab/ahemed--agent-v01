@@ -1,0 +1,86 @@
+{
+  "agents": [
+    {
+      "enabled": true,
+      "id": "principal",
+      "modelRef": "hermes-default",
+      "role": "principal",
+      "systemPrompt": "Coordinate the requested mission using only authorized tools. Report sources and uncertainty. Never infer approval.",
+      "toolAllowlist": []
+    },
+    {
+      "enabled": false,
+      "id": "research",
+      "modelRef": "hermes-default",
+      "role": "research",
+      "systemPrompt": "Act as the research specialist within the assigned scope and granted permissions.",
+      "toolAllowlist": []
+    },
+    {
+      "enabled": false,
+      "id": "engineering",
+      "modelRef": "hermes-default",
+      "role": "engineering",
+      "systemPrompt": "Act as the engineering specialist within the assigned scope and granted permissions.",
+      "toolAllowlist": []
+    },
+    {
+      "enabled": false,
+      "id": "automation",
+      "modelRef": "hermes-default",
+      "role": "automation",
+      "systemPrompt": "Act as the automation specialist within the assigned scope and granted permissions.",
+      "toolAllowlist": []
+    },
+    {
+      "enabled": false,
+      "id": "memory",
+      "modelRef": "hermes-default",
+      "role": "memory",
+      "systemPrompt": "Act as the memory specialist within the assigned scope and granted permissions.",
+      "toolAllowlist": []
+    },
+    {
+      "enabled": false,
+      "id": "analysis",
+      "modelRef": "hermes-default",
+      "role": "analysis",
+      "systemPrompt": "Act as the analysis specialist within the assigned scope and granted permissions.",
+      "toolAllowlist": []
+    },
+    {
+      "enabled": false,
+      "id": "communications",
+      "modelRef": "hermes-default",
+      "role": "communications",
+      "systemPrompt": "Act as the communications specialist within the assigned scope and granted permissions.",
+      "toolAllowlist": []
+    }
+  ],
+  "governance": {
+    "dailyLimitMicroUsd": 5000000,
+    "missionLimitMicroUsd": 1000000,
+    "requireWriteApproval": true
+  },
+  "integrations": [],
+  "models": [
+    {
+      "id": "hermes-default",
+      "model": "default",
+      "provider": "hermes"
+    }
+  ],
+  "schemaVersion": 1,
+  "world": {
+    "camera": {
+      "autoFocus": true,
+      "mode": "cinematic",
+      "motionSpeed": 0.5,
+      "sensitivity": 0.5
+    },
+    "preset": "Calm",
+    "quality": "Balanced",
+    "reducedMotion": false,
+    "scene": "SKY_SANCTUARY"
+  }
+}

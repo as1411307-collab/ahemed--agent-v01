@@ -10,7 +10,10 @@
     "core": "npm run start -w @ahmed/core",
     "mobile": "npm run start -w @ahmed/mobile",
     "test": "npm run test -w @ahmed/core",
-    "typecheck": "npm run typecheck -w @ahmed/contract && npm run typecheck -w @ahmed/core"
+    "typecheck": "npm run typecheck -w @ahmed/contract && npm run typecheck -w @ahmed/core",
+    "nexus": "npm run nexus -w @ahmed/core",
+    "studio": "npm run start -w @nexus/studio",
+    "build:studio": "npm run build -w @nexus/studio"
   },
   "devDependencies": {
     "@playwright/cli": "^0.1.22",

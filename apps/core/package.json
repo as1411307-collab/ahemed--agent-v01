@@ -6,7 +6,9 @@
   "scripts": {
     "start": "tsx src/main.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "nexus": "tsx src/nexus/main.ts",
+    "test:security": "node --experimental-strip-types test/security/publicHttpGet.security.mjs"
   },
   "dependencies": {
     "@ahmed/contract": "0.1.0",

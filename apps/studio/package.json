@@ -1,0 +1,22 @@
+{
+  "name": "@nexus/studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "vite --host 127.0.0.1",
+    "build": "tsc -p tsconfig.json && vite build",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:browser": "node --import tsx --test test/studio.browser.test.mjs"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.10.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "@types/react-dom": "^19.2.0",
+    "vite": "^8.0.0"
+  }
+}
