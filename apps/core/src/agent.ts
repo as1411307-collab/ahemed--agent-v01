@@ -184,7 +184,9 @@ export class Agent {
     const action = this.store.getAction(actionId);
     if (!action || action.task_id !== taskId) return { kind: "not_found" };
 
-    if (action.decision === null && this.isExpired(action)) this.expire(action);
+    // Validate and persist one acceptance time, even if the clock crosses expiry during the transaction.
+    const decidedAt = this.store.now();
+    if (action.decision === null && this.isExpired(action, Date.parse(decidedAt))) this.expire(action);
     const current = this.store.getAction(actionId)!;
     const task = () => this.store.getTask(taskId)!;
 
@@ -200,7 +202,7 @@ export class Agent {
 
     if (decision === "REJECT") {
       this.store.tx(() => {
-        if (!this.store.recordDecision(actionId, "REJECT")) throw new Error("decision race");
+        if (!this.store.recordDecision(actionId, "REJECT", decidedAt)) throw new Error("decision race");
         this.store.audit("DECISION_RECORDED", { taskId, actionId }, { decision });
         this.store.transition(taskId, "REJECTED", { result_message: "Rejected. Nothing was changed." });
         this.store.addMessage({
@@ -218,7 +220,7 @@ export class Agent {
     // The UNIQUE idempotency_key in `executions` plus the compare-and-set on the task status
     // guarantee that only one request can ever reach executeAction for this action.
     this.store.tx(() => {
-      if (!this.store.recordDecision(actionId, "APPROVE")) throw new Error("decision race");
+      if (!this.store.recordDecision(actionId, "APPROVE", decidedAt)) throw new Error("decision race");
       this.store.audit("DECISION_RECORDED", { taskId, actionId }, { decision });
       this.store.transition(taskId, "APPROVED");
       this.store.insertExecution(current);
@@ -229,8 +231,8 @@ export class Agent {
     return { kind: "ok", task: task() };
   }
 
-  private isExpired(action: ActionRow): boolean {
-    return this.store.clock().getTime() > Date.parse(action.expires_at);
+  private isExpired(action: ActionRow, now = this.store.clock().getTime()): boolean {
+    return now >= Date.parse(action.expires_at);
   }
 
   private expire(action: ActionRow): void {
@@ -265,7 +267,7 @@ export class Agent {
       task.status === "EXECUTING" &&
       action.decision === "APPROVE" &&
       action.decided_at !== null &&
-      Date.parse(action.decided_at) <= Date.parse(action.expires_at) &&
+      Date.parse(action.decided_at) < Date.parse(action.expires_at) &&
       execution !== undefined &&
       execution.action_id === action.id &&
       execution.task_id === task.id;
@@ -288,9 +290,13 @@ export class Agent {
   /** Looks at the real disk and decides COMPLETED or FAILED. Never re-executes. */
   private verify(action: ActionRow, execError: string | null): void {
     const plan = JSON.parse(action.input) as MovePlan;
+    // Read the durable result so a restart cannot turn a known failed execution into success.
+    const executionFailed = this.store.listAudit(action.task_id).some(
+      (event) => event.action_id === action.id && event.event === "EXECUTION_ERROR",
+    );
     let verified = false;
     try {
-      verified = verifyMove(this.ws, plan);
+      verified = !executionFailed && verifyMove(this.ws, plan);
     } catch {
       verified = false;
     }
@@ -304,7 +310,7 @@ export class Agent {
         this.store.addMessage({ conversationId: task.conversation_id, role: "assistant", content: message, taskId: task.id });
         this.store.audit("TASK_COMPLETED", { taskId: task.id, actionId: action.id }, { verified });
       } else {
-        const message = `Move failed: ${execError ?? "the file is not at the destination."} Verification: file was not moved.`;
+        const message = `Move verification failed: ${execError ?? "could not confirm the approved file at the destination."}`;
         this.store.transition(task.id, "FAILED", { error_code: "EXECUTION_FAILED", error_message: message });
         this.store.addMessage({ conversationId: task.conversation_id, role: "assistant", content: `Error: ${message}`, taskId: task.id });
         this.store.audit("TASK_FAILED", { taskId: task.id, actionId: action.id }, { code: "EXECUTION_FAILED", message });

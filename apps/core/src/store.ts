@@ -237,10 +237,10 @@ export class Store {
   }
 
   /** Records a decision only if none exists yet. Returns false if one was already recorded. */
-  recordDecision(actionId: string, decision: DecisionValue | "EXPIRED"): boolean {
+  recordDecision(actionId: string, decision: DecisionValue | "EXPIRED", decidedAt = this.now()): boolean {
     const res = this.db
       .prepare("UPDATE actions SET decision = ?, decided_at = ? WHERE id = ? AND decision IS NULL")
-      .run(decision, this.now(), actionId);
+      .run(decision, decidedAt, actionId);
     return res.changes === 1;
   }
 

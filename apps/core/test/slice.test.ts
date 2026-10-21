@@ -274,6 +274,36 @@ describe("5. repeated approvals never execute twice", () => {
     expect(polled.status).toBe("REJECTED");
     expect(polled.error?.code).toBe("APPROVAL_EXPIRED");
   });
+
+  it.each(["APPROVE", "REJECT"] as const)("expires at the exact deadline before a %s decision", async (decision) => {
+    const move = await uploadAndRequestMove();
+    env.nowMs = Date.parse(approval(move).expires_at);
+
+    const res = await decide(core, move.task_id!, approval(move).action_id, decision);
+    expect(res.statusCode).toBe(410);
+    expect(res.body.status).toBe("REJECTED");
+    expect(res.body.error?.code).toBe("APPROVAL_EXPIRED");
+    expect(readFileSync(ws("inbox", "report.txt"), "utf8")).toBe(REPORT.content);
+    expect(countEvents(core, "EXECUTION_STARTED", move.task_id!)).toBe(0);
+  });
+
+  it.each(["APPROVE", "REJECT"] as const)("persists the same timestamp used to accept a %s decision", async (decision) => {
+    const move = await uploadAndRequestMove();
+    const beforeExpiry = Date.parse(approval(move).expires_at) - 1;
+    let clockReads = 0;
+    Object.defineProperty(env, "nowMs", {
+      configurable: true,
+      get: () => clockReads++ === 0 ? beforeExpiry : beforeExpiry + 1,
+    });
+
+    const res = await decide(core, move.task_id!, approval(move).action_id, decision);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe(decision === "APPROVE" ? "COMPLETED" : "REJECTED");
+    const action = core.store.getAction(approval(move).action_id)!;
+    expect(Date.parse(action.decided_at!)).toBe(beforeExpiry);
+    expect(Date.parse(action.decided_at!)).toBeLessThan(Date.parse(action.expires_at));
+  });
 });
 
 describe("6. restarting the Core", () => {
@@ -334,6 +364,65 @@ describe("6. restarting the Core", () => {
     expect(res.status).toBe("COMPLETED");
     expect((res.data as ResultData).verified).toBe(true);
     expect(countEvents(core, "EXECUTION_STARTED")).toBe(0);
+  });
+
+  it.each(["EXECUTING", "VERIFYING"] as const)("does not verify an unrelated destination after restarting from %s", async (status) => {
+    const move = await uploadAndRequestMove();
+    simulateCrashInExecuting(move.task_id!, approval(move).action_id);
+    if (status === "VERIFYING") core.store.transition(move.task_id!, "VERIFYING");
+    renameSync(ws("inbox", "report.txt"), ws("inbox", "renamed.txt"));
+    mkdirSync(ws("archive"));
+    const unrelated = "X".repeat(REPORT.content.length);
+    writeFileSync(ws("archive", "report.txt"), unrelated);
+
+    await restart();
+
+    const res = await getTask(core, move.task_id!);
+    expect(res.status).toBe("FAILED");
+    expect(res.error?.code).toBe("EXECUTION_FAILED");
+    expect((res.data as ResultData).verified).toBe(false);
+    expect(readFileSync(ws("inbox", "renamed.txt"), "utf8")).toBe(REPORT.content);
+    expect(readFileSync(ws("archive", "report.txt"), "utf8")).toBe(unrelated);
+    expect(countEvents(core, "EXECUTION_STARTED", move.task_id!)).toBe(0);
+  });
+
+  it("does not claim verified recovery for a legacy action with no content fingerprint", async () => {
+    const move = await uploadAndRequestMove();
+    const action = core.store.getAction(approval(move).action_id)!;
+    const legacyPlan = JSON.parse(action.input);
+    delete legacyPlan.source_sha256;
+    core.store.db.prepare("UPDATE actions SET input = ? WHERE id = ?").run(JSON.stringify(legacyPlan), action.id);
+    simulateCrashInExecuting(move.task_id!, action.id);
+    mkdirSync(ws("archive"));
+    renameSync(ws("inbox", "report.txt"), ws("archive", "report.txt"));
+
+    await restart();
+
+    const res = await getTask(core, move.task_id!);
+    expect(res.status).toBe("FAILED");
+    expect((res.data as ResultData).verified).toBe(false);
+    expect(readFileSync(ws("archive", "report.txt"), "utf8")).toBe(REPORT.content);
+    expect(countEvents(core, "EXECUTION_STARTED", move.task_id!)).toBe(0);
+  });
+
+  it.each(["EXECUTING", "VERIFYING"] as const)("preserves a recorded execution failure when recovering from %s", async (status) => {
+    const move = await uploadAndRequestMove();
+    const actionId = approval(move).action_id;
+    simulateCrashInExecuting(move.task_id!, actionId);
+    renameSync(ws("inbox", "report.txt"), ws("inbox", "renamed.txt"));
+    mkdirSync(ws("archive"));
+    writeFileSync(ws("archive", "report.txt"), REPORT.content);
+    core.store.audit("EXECUTION_ERROR", { taskId: move.task_id!, actionId }, { message: "Source file no longer exists." });
+    if (status === "VERIFYING") core.store.transition(move.task_id!, "VERIFYING");
+
+    await restart();
+
+    const res = await getTask(core, move.task_id!);
+    expect(res.status).toBe("FAILED");
+    expect((res.data as ResultData).verified).toBe(false);
+    expect(readFileSync(ws("inbox", "renamed.txt"), "utf8")).toBe(REPORT.content);
+    expect(readFileSync(ws("archive", "report.txt"), "utf8")).toBe(REPORT.content);
+    expect(countEvents(core, "EXECUTION_STARTED", move.task_id!)).toBe(0);
   });
 
   it("a task interrupted while PROCESSING fails clearly instead of hanging", async () => {
@@ -427,6 +516,52 @@ describe("9. execution failure is reported as FAILED", () => {
     expect(res.body.status).toBe("FAILED");
     expect(res.body.error?.code).toBe("EXECUTION_FAILED");
     expect(existsSync(ws("archive", "report.txt"))).toBe(false);
+  });
+
+  it.each([REPORT.content, "UNRELATED FILE"])("does not report success after execution failed, even if a destination exists (%s)", async (targetContent) => {
+    const move = await uploadAndRequestMove();
+    renameSync(ws("inbox", "report.txt"), ws("inbox", "renamed.txt"));
+    mkdirSync(ws("archive"));
+    writeFileSync(ws("archive", "report.txt"), targetContent);
+
+    const res = await decide(core, move.task_id!, approval(move).action_id, "APPROVE");
+
+    expect(res.body.status).toBe("FAILED");
+    expect(res.body.error?.code).toBe("EXECUTION_FAILED");
+    expect((res.body.data as ResultData).verified).toBe(false);
+    expect(readFileSync(ws("archive", "report.txt"), "utf8")).toBe(targetContent);
+    expect(readFileSync(ws("inbox", "renamed.txt"), "utf8")).toBe(REPORT.content);
+    expect(countEvents(core, "EXECUTION_ERROR", move.task_id!)).toBe(1);
+    expect(countEvents(core, "TASK_COMPLETED", move.task_id!)).toBe(0);
+  });
+
+  it("refuses to move content changed since the approval was requested", async () => {
+    const move = await uploadAndRequestMove();
+    const changed = "X".repeat(REPORT.content.length);
+    writeFileSync(ws("inbox", "report.txt"), changed);
+
+    const res = await decide(core, move.task_id!, approval(move).action_id, "APPROVE");
+
+    expect(res.body.status).toBe("FAILED");
+    expect(res.body.error?.code).toBe("EXECUTION_FAILED");
+    expect((res.body.data as ResultData).verified).toBe(false);
+    expect(readFileSync(ws("inbox", "report.txt"), "utf8")).toBe(changed);
+    expect(existsSync(ws("archive"))).toBe(false);
+  });
+
+  it("refuses legacy approvals without a content fingerprint before changing files", async () => {
+    const move = await uploadAndRequestMove();
+    const action = core.store.getAction(approval(move).action_id)!;
+    const legacyPlan = JSON.parse(action.input);
+    delete legacyPlan.source_sha256;
+    core.store.db.prepare("UPDATE actions SET input = ? WHERE id = ?").run(JSON.stringify(legacyPlan), action.id);
+
+    const res = await decide(core, move.task_id!, action.id, "APPROVE");
+
+    expect(res.body.status).toBe("FAILED");
+    expect(res.body.error?.message).toContain("Send the move request again");
+    expect(readFileSync(ws("inbox", "report.txt"), "utf8")).toBe(REPORT.content);
+    expect(existsSync(ws("archive"))).toBe(false);
   });
 });
 
