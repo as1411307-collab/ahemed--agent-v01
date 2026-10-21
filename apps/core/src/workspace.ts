@@ -32,6 +32,9 @@ export class Workspace {
       throw outside(rel, "empty or invalid path");
     }
     const normalized = rel.trim().replace(/\\/g, "/");
+    if (normalized === "." || normalized === "./") {
+      throw outside(rel, "the workspace root is not a valid file path");
+    }
     if (path.isAbsolute(normalized) || path.win32.isAbsolute(normalized) || /^[a-zA-Z]:/.test(normalized)) {
       throw outside(rel, "absolute paths are not allowed");
     }
