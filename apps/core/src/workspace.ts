@@ -41,16 +41,19 @@ export class Workspace {
     const abs = path.resolve(this.root, normalized);
     if (!this.contains(abs)) throw outside(rel, "resolves outside the workspace");
 
-    // Follow symlinks/junctions: the nearest existing ancestor must really be inside.
+    // Follow symlinks/junctions through the existing ancestor chain, then preserve the remainder of the path.
+    // This keeps operations canonical and prevents a symlinked ancestor from escaping the workspace.
     let probe = abs;
     while (!existsSync(probe)) {
       const parent = path.dirname(probe);
       if (parent === probe) break;
       probe = parent;
     }
-    const real = realpathSync(probe);
+    const probeReal = realpathSync(probe);
+    const suffix = path.relative(probe, abs);
+    const real = suffix === "" ? probeReal : path.resolve(probeReal, suffix);
     if (!this.contains(real)) throw outside(rel, "a link points outside the workspace");
-    return abs;
+    return real;
   }
 
   /** Workspace-relative, forward-slash form of an absolute path inside the workspace. */
