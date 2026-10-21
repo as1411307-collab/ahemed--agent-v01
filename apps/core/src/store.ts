@@ -94,8 +94,6 @@ export class Store {
     return this.db.transaction(fn)();
   }
 
-  // ---- audit (append-only) ----
-
   audit(event: string, ref: { taskId?: string | null; actionId?: string | null } = {}, detail?: unknown): void {
     this.db
       .prepare("INSERT INTO audit_log (ts, event, task_id, action_id, detail) VALUES (?, ?, ?, ?, ?)")
@@ -107,8 +105,6 @@ export class Store {
       ? (this.db.prepare("SELECT * FROM audit_log WHERE task_id = ? ORDER BY id").all(taskId) as AuditRow[])
       : (this.db.prepare("SELECT * FROM audit_log ORDER BY id").all() as AuditRow[]);
   }
-
-  // ---- conversations & messages ----
 
   ensureConversation(id: string): void {
     this.db.prepare("INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?)").run(id, this.now());
@@ -137,8 +133,6 @@ export class Store {
       .prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY seq")
       .all(conversationId) as MessageRow[];
   }
-
-  // ---- tasks ----
 
   createTask(t: { conversationId: string; requestId: string; userMessage: string; attachments: Attachment[] }): TaskRow {
     const id = randomUUID();
@@ -170,10 +164,6 @@ export class Store {
     return this.db.prepare("SELECT * FROM tasks WHERE status = ? ORDER BY created_at").all(status) as TaskRow[];
   }
 
-  /**
-   * Moves a task to `to`. Validates against the explicit transition table and uses a
-   * compare-and-set on the current status so two writers can never both win.
-   */
   transition(taskId: string, to: TaskStatus, patch: TaskPatch = {}): TaskRow {
     const task = this.getTask(taskId);
     if (!task) throw new Error(`Task ${taskId} not found`);
@@ -191,8 +181,6 @@ export class Store {
     this.audit("STATUS_CHANGED", { taskId }, { from: task.status, to });
     return this.getTask(taskId)!;
   }
-
-  // ---- actions ----
 
   createAction(a: Omit<ActionRow, "id" | "idempotency_key" | "created_at" | "decision" | "decided_at" | "verified">): ActionRow {
     const id = randomUUID();
@@ -238,7 +226,6 @@ export class Store {
       .all() as ActionRow[];
   }
 
-  /** Records a decision only if none exists yet. Returns false if one was already recorded. */
   recordDecision(actionId: string, decision: DecisionValue | "EXPIRED", decidedAt = this.now()): boolean {
     const res = this.db
       .prepare("UPDATE actions SET decision = ?, decided_at = ? WHERE id = ? AND decision IS NULL")
@@ -250,9 +237,6 @@ export class Store {
     this.db.prepare("UPDATE actions SET verified = ? WHERE id = ?").run(verified ? 1 : 0, actionId);
   }
 
-  // ---- execution reservation ----
-
-  /** Throws (SQLITE_CONSTRAINT) if this idempotency_key was already reserved. */
   insertExecution(action: ActionRow): void {
     this.db
       .prepare("INSERT INTO executions (idempotency_key, action_id, task_id, reserved_at) VALUES (?, ?, ?, ?)")
