@@ -326,13 +326,23 @@ export class Agent {
    */
   recover(): void {
     for (const task of this.store.listTasksByStatus("EXECUTING")) {
-      const action = this.store.getActionByTask(task.id)!;
+      const action = this.store.getActionByTask(task.id);
+      if (!action) {
+        this.store.audit("RECOVERY", { taskId: task.id }, { found: "EXECUTING", rerun: false, reason: "missing_action" });
+        this.fail(task.id, "INTERRUPTED", "The Core restarted while this task was executing. Please send it again.");
+        continue;
+      }
       this.store.audit("RECOVERY", { taskId: task.id, actionId: action.id }, { found: "EXECUTING", rerun: false });
       this.store.transition(task.id, "VERIFYING");
       this.verify(action, "execution was interrupted by a Core restart and is not retried automatically.");
     }
     for (const task of this.store.listTasksByStatus("VERIFYING")) {
-      const action = this.store.getActionByTask(task.id)!;
+      const action = this.store.getActionByTask(task.id);
+      if (!action) {
+        this.store.audit("RECOVERY", { taskId: task.id }, { found: "VERIFYING", rerun: false, reason: "missing_action" });
+        this.fail(task.id, "INTERRUPTED", "The Core restarted while this task was verifying. Please send it again.");
+        continue;
+      }
       this.store.audit("RECOVERY", { taskId: task.id, actionId: action.id }, { found: "VERIFYING", rerun: false });
       this.verify(action, "execution was interrupted by a Core restart and is not retried automatically.");
     }
