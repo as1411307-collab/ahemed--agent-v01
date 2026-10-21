@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync } from "node:fs";
 import path from "node:path";
 import type { RiskLevel } from "@ahmed/contract";
@@ -94,6 +95,8 @@ export interface MovePlan {
   destination_dir: string;
   /** Final file path (destination_dir + file name). */
   target: string;
+  /** Content approved by the user. Absent only in actions saved by older Core versions. */
+  source_sha256?: string;
 }
 
 /** Validates a move before asking for approval. No side effects. */
@@ -113,7 +116,12 @@ export function planMove(ws: Workspace, input: unknown): MovePlan {
   if (existsSync(targetAbs)) {
     throw new ToolError("TOOL_ERROR", `A file named ${path.basename(srcAbs)} already exists in ${ws.relative(dirAbs)}.`);
   }
-  return { source: ws.relative(srcAbs), destination_dir: ws.relative(dirAbs), target: ws.relative(targetAbs) };
+  return {
+    source: ws.relative(srcAbs),
+    destination_dir: ws.relative(dirAbs),
+    target: ws.relative(targetAbs),
+    source_sha256: fileSha256(srcAbs),
+  };
 }
 
 /** Performs the move. Only called by the executor after a valid approval and reservation. */
@@ -124,6 +132,12 @@ export function executeMove(ws: Workspace, plan: MovePlan): void {
   if (!existsSync(srcAbs) || !statSync(srcAbs).isFile()) {
     throw new ToolError("EXECUTION_FAILED", `Source file no longer exists: ${plan.source}`);
   }
+  if (!plan.source_sha256) {
+    throw new ToolError("EXECUTION_FAILED", "This approval has no content fingerprint. Send the move request again.");
+  }
+  if (fileSha256(srcAbs) !== plan.source_sha256) {
+    throw new ToolError("EXECUTION_FAILED", "The source file changed since approval was requested. Send the move request again.");
+  }
   mkdirSync(dirAbs, { recursive: true });
   // Re-resolve after mkdir so a link created in between cannot redirect the move.
   ws.resolve(plan.target);
@@ -133,11 +147,16 @@ export function executeMove(ws: Workspace, plan: MovePlan): void {
   renameSync(srcAbs, targetAbs);
 }
 
-/** Checks the real state of the disk. True only if the file is at the target and gone from the source. */
+/** Checks that the approved content is at the target and gone from the source. Never re-executes. */
 export function verifyMove(ws: Workspace, plan: MovePlan): boolean {
   const srcAbs = ws.resolve(plan.source);
   const targetAbs = ws.resolve(plan.target);
-  return !existsSync(srcAbs) && existsSync(targetAbs) && statSync(targetAbs).isFile();
+  return !!plan.source_sha256 && !existsSync(srcAbs) && existsSync(targetAbs) &&
+    statSync(targetAbs).isFile() && fileSha256(targetAbs) === plan.source_sha256;
+}
+
+function fileSha256(abs: string): string {
+  return createHash("sha256").update(readFileSync(abs)).digest("hex");
 }
 
 function stringField(input: unknown, key: string): string {
