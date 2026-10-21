@@ -1,3 +1,10 @@
+# NEXUS ONE — Current scope override (2026-10-21)
+
+For NEXUS work, read [the authoritative current plan](docs/NEXUS_SCENE_FIRST_PLAN.md) first. Ahmed requires a purchased ready-made cinematic scene as the world foundation and explicitly authorizes parallel implementation of the main agent, integrations and specialist agents now. Backend work does not wait for purchase. Do not build the world from scratch or replace it with a dashboard. The historical v0.1 scope, BUILD_PROMPT precedence, no-subagents and no-connectors restrictions below do not override this NEXUS instruction. Preserve applicable security invariants and existing work. Asset payment requires approval of the specific asset and price. Old scheduled automations remain stopped.
+
+---
+## Historical v0.1 instructions
+
 # CLAUDE.md — AHMED Agent
 
 يُقرأ هذا الملف في بداية كل جلسة. التزم به دائمًا.
