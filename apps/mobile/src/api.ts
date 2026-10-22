@@ -51,6 +51,31 @@ async function call<T>(path: string, init: RequestInit = {}, timeoutMs = 20_000)
   throw new ApiError(res.status, body?.error?.code ?? "HTTP", body?.error?.message ?? `Request failed (${res.status}).`);
 }
 
+/**
+ * Opens a streaming GET (used for /v1/events). Resolves once headers arrive with status 200 and an
+ * event-stream body; the caller reads `body.getReader()`. The token stays in this file.
+ */
+export async function openStream(path: string, headers: Record<string, string>, signal: AbortSignal): Promise<Response> {
+  if (!CORE_URL || !APP_TOKEN) {
+    throw new ApiError(0, "CONFIG", "Set EXPO_PUBLIC_CORE_URL and EXPO_PUBLIC_APP_TOKEN in apps/mobile/.env, then restart Expo.");
+  }
+  const res = await fetch(`${CORE_URL}${path}`, {
+    headers: {
+      ...headers,
+      Accept: "text/event-stream",
+      // Android expo/fetch holds compressed streams until they end (expo/expo#50568).
+      "Accept-Encoding": "identity",
+      Authorization: `Bearer ${APP_TOKEN}`,
+    },
+    signal,
+  });
+  if (res.status !== 200 || !res.body || !(res.headers.get("content-type") ?? "").startsWith("text/event-stream")) {
+    const body = (await res.json().catch(() => null)) as Partial<AgentResponse> | null;
+    throw new ApiError(res.status, body?.error?.code ?? "HTTP", body?.error?.message ?? `Event stream failed (${res.status}).`);
+  }
+  return res;
+}
+
 export interface PickedFile {
   uri: string;
   name: string;

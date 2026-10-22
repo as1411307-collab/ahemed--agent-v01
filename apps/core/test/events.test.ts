@@ -143,7 +143,7 @@ describe("GET /v1/events", () => {
     expect(s.headers["content-encoding"]).toBeUndefined();
     await vi.waitFor(() => expect(s.text()).toContain("stream.ready"));
     expect(s.text().startsWith("retry: 3000\n\n")).toBe(true);
-    expect(readyOf(s)).toEqual({ contract_version: "0.1", cursor: last, last_event_id: last });
+    expect(readyOf(s)).toEqual({ contract_version: "0.1", stream_id: core.store.streamId(), cursor: last, last_event_id: last });
     // No replay without a cursor: history is loaded over REST after the stream is open.
     expect(s.events()).toEqual([]);
   });
@@ -246,7 +246,11 @@ describe("GET /v1/events", () => {
     await vi.waitFor(() => expect(s.text()).toContain("stream.ready"));
     const reset = s.frames().find((f) => f.event === "stream.reset")!;
     expect(Number(reset.id)).toBe(last);
-    expect(JSON.parse(reset.data!) as StreamResetData).toEqual({ contract_version: "0.1", last_event_id: last });
+    expect(JSON.parse(reset.data!) as StreamResetData).toEqual({
+      contract_version: "0.1",
+      stream_id: core.store.streamId(),
+      last_event_id: last,
+    });
     expect(readyOf(s).cursor).toBe(last);
 
     await sendAndWait(core, CONV, "after reset");
@@ -334,6 +338,84 @@ describe("GET /v1/events", () => {
     expect(rejected.type === "task.status_changed" && rejected.data.error_code).toBe("APPROVAL_EXPIRED");
   });
 
+  it("chains prev_id so a client can detect a lost frame", async () => {
+    await start();
+    await sendAndWait(core, CONV, "first");
+    const s = await openStream(core, "?after=2");
+    await sendAndWait(core, CONV, "second");
+    await vi.waitFor(() => expect(s.events().length).toBe(core.store.lastEventId() - 2));
+    const streamed = s.frames().filter((f) => f.id).map((f) => JSON.parse(f.data!) as { id: number; prev_id: number });
+    expect(streamed[0].prev_id).toBe(2);
+    for (let i = 1; i < streamed.length; i++) expect(streamed[i].prev_id).toBe(streamed[i - 1].id);
+  });
+
+  it("sends nosniff and a padding comment so iOS does not hold back the first events", async () => {
+    await start();
+    const s = await openStream(core);
+    await vi.waitFor(() => expect(s.text()).toContain("stream.ready"));
+    expect(s.headers["x-content-type-options"]).toBe("nosniff");
+    expect(s.text().indexOf("stream.ready")).toBeGreaterThan(2048);
+  });
+
+  it("identifies its database with a stream_id and resets a cursor from another database", async () => {
+    await start();
+    await sendAndWait(core, CONV, "hello");
+    const id = core.store.streamId();
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    const same = await openStream(core, `?stream_id=${id}&after=1`);
+    await vi.waitFor(() => expect(same.text()).toContain("stream.ready"));
+    expect(readyOf(same).stream_id).toBe(id);
+    expect(same.text()).not.toContain("stream.reset");
+
+    const other = await openStream(core, "?stream_id=some-old-db&after=1");
+    await vi.waitFor(() => expect(other.text()).toContain("stream.ready"));
+    const reset = JSON.parse(other.frames().find((f) => f.event === "stream.reset")!.data!) as StreamResetData;
+    expect(reset).toEqual({ contract_version: "0.1", stream_id: id, last_event_id: core.store.lastEventId() });
+
+    // Survives a restart on the same file; a new database file gets a new one.
+    const dbFile = env.dbFile;
+    await core.close();
+    core = await createCore({ dbFile, workspaceRoot: env.wsRoot, appToken: TOKEN, model: scriptedModel(), clock: env.clock });
+    expect(core.store.streamId()).toBe(id);
+    const other2 = makeEnv();
+    const core2 = await createCore({ dbFile: other2.dbFile, workspaceRoot: other2.wsRoot, appToken: TOKEN, model: scriptedModel() });
+    expect(core2.store.streamId()).not.toBe(id);
+    await core2.close();
+    other2.cleanup();
+  });
+
+  it("refuses appendEvent outside a transaction, and survives a throwing listener", async () => {
+    await start();
+    expect(() => core.store.appendEvent("task.created", {}, {})).toThrow(/inside Store.tx/);
+    const calls: string[] = [];
+    const off1 = core.store.onEvents(() => {
+      throw new Error("listener blew up");
+    });
+    const off2 = core.store.onEvents(() => calls.push("second"));
+    core.store.tx(() => core.store.appendEvent("task.created", { taskId: "x" }, { request_id: "x", status: "RECEIVED" }));
+    await vi.waitFor(() => expect(calls).toEqual(["second"]));
+    expect(core.store.listAudit().some((a) => a.event === "ERROR" && a.detail?.includes("listener blew up"))).toBe(true);
+    off1();
+    off2();
+  });
+
+  it("never puts message text, file names, file contents or paths into any event", async () => {
+    await start();
+    const MARK = "ZQX7MARK";
+    const file = { name: `${MARK}-file.txt`, content: `${MARK} content line`, type: "text/plain" };
+    await sendAndWait(core, CONV, `لخص ${MARK}`, file);
+    const move = await sendAndWait(core, CONV, `انقل ${MARK} إلى مجلد archive`);
+    await decide(core, move.task_id!, approval(move).action_id, "APPROVE");
+    const rows = core.store.eventsAfter(0);
+    expect(rows.length).toBeGreaterThan(10);
+    for (const row of rows) {
+      expect(JSON.stringify(row)).not.toContain(MARK);
+      expect(row.data).not.toMatch(/inbox|archive/);
+    }
+    // The audit log keeps the full detail; only the public events are minimal.
+    expect(core.store.listAudit().some((a) => a.detail?.includes(MARK))).toBe(true);
+  });
+
   it("events are append-only in SQLite", async () => {
     await start();
     await sendAndWait(core, CONV, "hello");
@@ -369,6 +451,50 @@ describe("GET /v1/events/page", () => {
     expect((await get("?limit=0")).statusCode).toBe(400);
     expect((await get("?after=x")).statusCode).toBe(400);
     expect((await core.app.inject({ method: "GET", url: "/v1/events/page" })).statusCode).toBe(401);
+  });
+});
+
+describe("GET /v1/events/page?wait= (long-poll)", () => {
+  const page = (q: string) => core.app.inject({ method: "GET", url: `/v1/events/page${q}`, headers: AUTH });
+
+  it("waits for the next committed event and returns it", async () => {
+    await start();
+    await sendAndWait(core, CONV, "hello");
+    const last = core.store.lastEventId();
+    const pending = page(`?after=${last}&wait=10`);
+    await new Promise((r) => setTimeout(r, 50));
+    core.store.tx(() => core.store.appendEvent("task.created", { taskId: "late" }, { request_id: "late", status: "RECEIVED" }));
+    const body = (await pending).json() as EventsPage;
+    expect(body.events.map((e) => e.task_id)).toEqual(["late"]);
+    expect(body.next_cursor).toBe(last + 1);
+  });
+
+  it("returns an empty page after the wait, answers at once when events exist, and validates wait", async () => {
+    await start();
+    await sendAndWait(core, CONV, "hello");
+    const last = core.store.lastEventId();
+    const t0 = Date.now();
+    const empty = (await page(`?after=${last}&wait=1`)).json() as EventsPage;
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(900);
+    expect(empty).toMatchObject({ events: [], next_cursor: last, reset: false });
+
+    const t1 = Date.now();
+    expect(((await page("?after=0&wait=25")).json() as EventsPage).events.length).toBe(last);
+    expect(Date.now() - t1).toBeLessThan(500);
+
+    for (const bad of ["26", "-1", "1.5", "x"]) expect((await page(`?wait=${bad}`)).statusCode).toBe(400);
+    const otherDb = (await page(`?after=${last}&wait=25&stream_id=old`)).json() as EventsPage;
+    expect(otherDb.reset).toBe(true);
+  });
+
+  it("lets close() finish while a long-poll is pending", async () => {
+    await start();
+    const pending = page(`?after=${core.store.lastEventId()}&wait=25`);
+    await new Promise((r) => setTimeout(r, 50));
+    const t0 = Date.now();
+    await core.close();
+    expect(Date.now() - t0).toBeLessThan(2000);
+    await pending.catch(() => {});
   });
 });
 

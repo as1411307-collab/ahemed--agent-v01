@@ -3,6 +3,7 @@ import {
   CONTRACT_VERSION,
   type CoreEvent,
   type EventsPage,
+  type StreamedCoreEvent,
   type StreamReadyData,
   type StreamResetData,
 } from "@ahmed/contract";
@@ -23,7 +24,15 @@ export interface EventStreamOptions {
   /** Streams are ended after this long; the client reconnects with its cursor, which re-checks the
    *  token and keeps the resume path exercised in daily use. */
   maxLifetimeMs: number;
+  /** Reconnect delay hint sent as the SSE `retry:` field. */
+  retryMs: number;
 }
+
+/** Longest ?wait= for /v1/events/page: under Unreal's 30 s HTTP activity timeout. */
+export const MAX_PAGE_WAIT_S = 25;
+
+/** iOS may hold the first ~1 KB of a streamed body for content sniffing; this comment pushes past it. */
+const IOS_SNIFF_PADDING = `:${" ".repeat(2048)}\n\n`;
 
 export const DEFAULT_EVENT_STREAM_OPTIONS: EventStreamOptions = {
   heartbeatMs: 15_000,
@@ -31,10 +40,8 @@ export const DEFAULT_EVENT_STREAM_OPTIONS: EventStreamOptions = {
   stallMs: 60_000,
   batchSize: 500,
   maxLifetimeMs: 30 * 60_000,
+  retryMs: 3_000,
 };
-
-/** Client reconnect delay, sent as the SSE `retry:` field. */
-const RETRY_MS = 3_000;
 
 export interface EventStreams {
   openCount(): number;
@@ -77,37 +84,81 @@ export function parseCursor(header: string | string[] | undefined, query: string
  */
 export function registerEventStream(app: FastifyInstance, store: Store, opts: EventStreamOptions): EventStreams {
   const open = new Map<ServerResponse, (finalChunk?: string) => void>();
+  /** Pending long-polls on /v1/events/page; each resolves early on shutdown. */
+  const waiters = new Set<() => void>();
 
   // app.close() waits for open responses, so end every stream first (also makes Ctrl+C exit cleanly).
   // Clients treat stream.shutdown like a dropped connection: reconnect with their cursor later.
   app.addHook("preClose", async () => {
     for (const end of [...open.values()]) end(frame("stream.shutdown", { contract_version: CONTRACT_VERSION }));
+    for (const wake of [...waiters]) wake();
   });
 
-  // ---- GET /v1/events/page: the same events as plain JSON, for Replay, backfill and polling clients ----
-  app.get<{ Querystring: { after?: string; limit?: string } }>("/v1/events/page", async (req, reply) => {
+  /** Resolves when new events may exist, the client leaves, the Core stops, or `ms` passes. */
+  const waitForEvents = (res: ServerResponse, ms: number) =>
+    new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        unsubscribe();
+        waiters.delete(done);
+        res.off("close", done);
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      const unsubscribe = store.onEvents(done);
+      waiters.add(done);
+      res.on("close", done);
+    });
+
+  // ---- GET /v1/events/page: the same events as plain JSON, for Replay, backfill and polling clients.
+  // ?wait=<1-25 s> long-polls when nothing is new yet: near-real-time with plain HTTP (e.g. Unreal).
+  app.get<{ Querystring: { after?: string; limit?: string; wait?: string; stream_id?: string } }>(
+    "/v1/events/page",
+    async (req, reply) => {
     const after = parseCursor(undefined, req.query.after);
     const limit = req.query.limit === undefined ? opts.batchSize : Number(req.query.limit);
-    if (after === null || !Number.isInteger(limit) || limit < 1 || limit > opts.batchSize) {
+    const wait = req.query.wait === undefined ? 0 : Number(req.query.wait);
+    if (
+      after === null ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > opts.batchSize ||
+      !Number.isInteger(wait) ||
+      wait < 0 ||
+      wait > MAX_PAGE_WAIT_S
+    ) {
       return reply
         .code(400)
-        .send(errorResponse("BAD_REQUEST", `'after' must be a non-negative integer and 'limit' 1-${opts.batchSize}.`));
+        .send(
+          errorResponse(
+            "BAD_REQUEST",
+            `'after' must be a non-negative integer, 'limit' 1-${opts.batchSize}, 'wait' 0-${MAX_PAGE_WAIT_S} seconds.`,
+          ),
+        );
     }
-    const last = store.lastEventId();
     const from = after ?? 0;
-    const reset = from > last;
+    const streamId = store.streamId();
+    const otherDb = req.query.stream_id !== undefined && req.query.stream_id !== streamId;
+    let last = store.lastEventId();
+    if (wait > 0 && from === last && !otherDb) {
+      await waitForEvents(reply.raw, wait * 1000);
+      last = store.lastEventId();
+    }
+    const reset = otherDb || from > last;
     const rows = reset ? [] : store.eventsAfter(from, limit);
     const page: EventsPage = {
       contract_version: CONTRACT_VERSION,
+      stream_id: streamId,
       events: rows.map(toCoreEvent),
       next_cursor: reset ? last : rows.length ? rows[rows.length - 1].id : from,
       last_event_id: last,
       reset,
     };
     return page;
-  });
+    },
+  );
 
-  app.get<{ Querystring: { after?: string } }>("/v1/events", (req, reply) => {
+  app.get<{ Querystring: { after?: string; stream_id?: string } }>("/v1/events", (req, reply) => {
     const requested = parseCursor(req.headers["last-event-id"], req.query.after);
     if (requested === null) {
       return reply.code(400).send(errorResponse("BAD_REQUEST", "Event cursor must be a non-negative integer."));
@@ -158,11 +209,24 @@ export function registerEventStream(app: FastifyInstance, store: Store, opts: Ev
 
     /** Sends every committed event after the cursor, pausing while the socket is full. */
     const pump = () => {
+      try {
+        pumpBatches();
+      } catch (err) {
+        // Only this stream fails; the client reconnects with its cursor.
+        req.log.error(err);
+        store.audit("ERROR", {}, { route: "/v1/events", message: (err as Error).message });
+        cleanup();
+        res.destroy();
+      }
+    };
+    const pumpBatches = () => {
       while (!closed && !draining) {
         const rows = store.eventsAfter(cursor, opts.batchSize);
         for (const row of rows) {
+          // prev_id lets the client notice a frame lost in transit (a known expo/fetch race).
+          const event: StreamedCoreEvent = { ...toCoreEvent(row), prev_id: cursor };
           cursor = row.id;
-          if (!write(frame(row.type, toCoreEvent(row), row.id))) return;
+          if (!write(frame(row.type, event, row.id))) return;
         }
         if (rows.length < opts.batchSize) return;
       }
@@ -181,21 +245,24 @@ export function registerEventStream(app: FastifyInstance, store: Store, opts: Ev
         "content-type": "text/event-stream; charset=utf-8",
         "cache-control": "no-cache, no-transform",
         "x-accel-buffering": "no",
+        "x-content-type-options": "nosniff",
       });
       open.set(res, end);
 
       const last = store.lastEventId();
-      let prelude = `retry: ${RETRY_MS}\n\n`;
-      if (requested !== undefined && requested > last) {
-        // The client remembers events this database never had (e.g. it was replaced): resync.
-        const reset: StreamResetData = { contract_version: CONTRACT_VERSION, last_event_id: last };
+      const streamId = store.streamId();
+      let prelude = `retry: ${opts.retryMs}\n\n${IOS_SNIFF_PADDING}`;
+      const otherDb = req.query.stream_id !== undefined && req.query.stream_id !== streamId;
+      if (requested !== undefined && (requested > last || otherDb)) {
+        // The client's cursor belongs to another database (replaced or restored): resync.
+        const reset: StreamResetData = { contract_version: CONTRACT_VERSION, stream_id: streamId, last_event_id: last };
         prelude += frame("stream.reset", reset, last);
         cursor = last;
       } else {
         // No cursor = start from now; the client then loads current state over REST.
         cursor = requested ?? last;
       }
-      const ready: StreamReadyData = { contract_version: CONTRACT_VERSION, cursor, last_event_id: last };
+      const ready: StreamReadyData = { contract_version: CONTRACT_VERSION, stream_id: streamId, cursor, last_event_id: last };
       prelude += frame("stream.ready", ready);
       write(prelude);
 

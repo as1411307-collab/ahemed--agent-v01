@@ -1,5 +1,7 @@
 // Mirrors V0_CONTRACT.md field-for-field. Change both together.
 
+export { SseParser, type SseFrame, type SseHandlers } from "./sse"; // extensionless: resolved by Metro (app) and tsx/Vitest (Core)
+
 export const CONTRACT_VERSION = "0.1" as const;
 export type ContractVersion = typeof CONTRACT_VERSION;
 
@@ -205,18 +207,28 @@ interface CoreEventOf<T extends CoreEventType> {
 export type CoreEvent = { [T in CoreEventType]: CoreEventOf<T> }[CoreEventType];
 
 /**
- * Sent (SSE `event: stream.reset`, no `id:`) when the client's cursor is ahead of the Core's newest
- * event, e.g. after the Core database was replaced. The client must drop its cursor, refetch state
- * over REST, and reconnect with `after = last_event_id`.
+ * A CoreEvent as sent on GET /v1/events. `prev_id` is the id of the previous event on the same stream
+ * (the stream's starting cursor for the first one); a client that sees prev_id differ from its last
+ * id lost a frame in transit and must reconnect from its last id.
+ */
+export type StreamedCoreEvent = CoreEvent & { prev_id: number };
+
+/**
+ * Sent (SSE `event: stream.reset`) when the client's cursor belongs to another database: it is ahead
+ * of the newest event, or the `stream_id` it sent differs. The client must refetch state over REST;
+ * the stream continues from `last_event_id`.
  */
 export interface StreamResetData {
   contract_version: ContractVersion;
+  stream_id: string;
   last_event_id: number;
 }
 
 /** First frame of every stream (SSE `event: stream.ready`, no `id:`): where delivery starts. */
 export interface StreamReadyData {
   contract_version: ContractVersion;
+  /** Identity of the Core database. Keep it with your cursor and send it back as ?stream_id=. */
+  stream_id: string;
   /** Events with id > cursor follow on this stream. */
   cursor: number;
   /** Newest event id when the stream opened. */
@@ -226,11 +238,13 @@ export interface StreamReadyData {
 /** GET /v1/events/page response. */
 export interface EventsPage {
   contract_version: ContractVersion;
+  stream_id: string;
   /** Oldest first, all with id > `after`. */
   events: CoreEvent[];
   /** Pass as `after` to get the next page. */
   next_cursor: number;
   last_event_id: number;
-  /** true when `after` is ahead of the newest event (the Core database was replaced): refetch state. */
+  /** true when the cursor belongs to another database (ahead of the newest event, or `stream_id`
+   *  differs): refetch state and continue from `next_cursor`. */
   reset: boolean;
 }

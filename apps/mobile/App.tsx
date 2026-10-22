@@ -26,6 +26,7 @@ import {
   type TaskStatus,
 } from "@ahmed/contract";
 import { ApiError, CORE_URL, decide, getConversation, getTask, newId, sendMessage, type PickedFile } from "./src/api";
+import { connectEvents, type LiveState } from "./src/events";
 
 const C = {
   bg: "#000000",
@@ -41,7 +42,10 @@ const C = {
 };
 
 const STORAGE_KEY = "ahmed.conversation_id";
+/** Fallback only: used while the live event stream is not connected. */
 const POLL_MS = 2000;
+/** Several events arrive per task step; refetch once for the burst. */
+const REFRESH_DEBOUNCE_MS = 150;
 
 const isRunning = (s: TaskStatus | null) => !!s && !FINAL_STATUSES.includes(s) && s !== "WAITING_FOR_APPROVAL";
 
@@ -85,6 +89,7 @@ export default function App() {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [showTasks, setShowTasks] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [live, setLive] = useState<LiveState>("connecting");
   const listRef = useRef<FlatList<ConversationMessage>>(null);
 
   // ---- restore conversation id and state from the Core ----
@@ -116,10 +121,33 @@ export default function App() {
   const running = tasks.filter((t) => isRunning(t.response.status));
   const approvals = tasks.filter((t) => t.response.response_type === "APPROVAL_REQUEST");
 
-  // ---- poll unfinished tasks every 2 seconds ----
+  // ---- live updates: refetch the conversation when the Core reports a change ----
+  useEffect(() => {
+    if (!conversationId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void load(conversationId), REFRESH_DEBOUNCE_MS);
+    };
+    const stream = connectEvents({
+      onReady: refresh,
+      onReset: refresh,
+      onEvent: (e) => {
+        if (e.conversation_id === conversationId) refresh();
+      },
+      onState: setLive,
+      onFatal: (e) => setError({ text: errorText(e), retry: () => void load(conversationId) }),
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      stream.stop();
+    };
+  }, [conversationId, load]);
+
+  // ---- fallback: poll unfinished tasks every 2 seconds while the stream is not live ----
   const runningKey = running.map((t) => `${t.task_id}:${t.response.status}`).join(",");
   useEffect(() => {
-    if (!conversationId || !runningKey) return;
+    if (!conversationId || !runningKey || live === "live") return;
     const timer = setInterval(async () => {
       try {
         const latest = await Promise.all(running.map((t) => getTask(t.task_id)));
@@ -130,7 +158,7 @@ export default function App() {
     }, POLL_MS);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, runningKey, load]);
+  }, [conversationId, runningKey, load, live]);
 
   useEffect(() => {
     if (conv?.messages.length) setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 50);
@@ -211,6 +239,7 @@ export default function App() {
           <View style={s.flex}>
             <Text style={s.title}>AHMED Agent</Text>
             <Text style={s.subtitle} numberOfLines={1}>
+              <Text style={{ color: live === "live" ? C.ok : C.muted }}>●</Text> {live === "live" ? "Live" : "Polling"} ·{" "}
               {CORE_URL || "Core URL not set"}
             </Text>
           </View>

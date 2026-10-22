@@ -116,7 +116,7 @@ Response: `AgentResponse` for the task.
 | POST | `/v1/tasks/{task_id}/actions/{action_id}/decision` | `ApprovalDecision` | `AgentResponse` |
 | GET  | `/v1/conversations/{conversation_id}` | — | `ConversationResponse` |
 | GET  | `/v1/events` | — | `text/event-stream` (section 6) |
-| GET  | `/v1/events/page?after=&limit=` | — | `EventsPage` (section 6.4) |
+| GET  | `/v1/events/page?after=&limit=&wait=&stream_id=` | — | `EventsPage` (section 6.4) |
 
 REST stays the source of truth. The event stream only tells clients *when* to refetch; a client
 that cannot stream keeps polling `GET /v1/tasks/{task_id}` (every 2 seconds while a task runs) or
@@ -147,21 +147,25 @@ stream of persisted Core events. Same Bearer header as every endpoint; the token
 in the URL (so native `EventSource` cannot be used: clients read the body with `fetch`).
 
 Request:
-- Cursor: header `Last-Event-ID: <n>` (sent automatically on reconnect) or query `?after=<n>`;
-  the header wins when both are present. `n` is a non-negative integer, otherwise `400`.
+- Cursor: header `Last-Event-ID: <n>` or query `?after=<n>`; the header wins when both are present.
+  `n` is a non-negative integer, otherwise `400`.
+- `?stream_id=<id>` (optional, recommended with a cursor): the `stream_id` from the last
+  `stream.ready`. If it is not this database's id, the cursor is treated as foreign (`stream.reset`).
 - No cursor = start from now. Recommended client flow: open the stream, wait for `stream.ready`,
   then load state over REST; every later change arrives as an event, so nothing falls in between.
 - Clients should send `Accept-Encoding: identity` (the Core never compresses this route).
 
 Response: `200`, `Content-Type: text/event-stream; charset=utf-8`,
-`Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`. Frames:
+`Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`, `X-Content-Type-Options: nosniff`.
+Frames, in order:
 
 | frame | `id:` | `data` | meaning |
 |-------|-------|--------|---------|
 | `retry: 3000` | — | — | reconnect delay hint (ms), first line of every stream |
-| `event: stream.reset` | newest id | `StreamResetData` | cursor was ahead of the Core (database replaced): drop local state, refetch over REST |
+| `:` + 2048 spaces (comment) | — | — | padding: iOS may hold the first ~1 KB of a body |
+| `event: stream.reset` | newest id | `StreamResetData` | cursor belongs to another database (ahead of the newest event, or other `stream_id`): refetch over REST |
 | `event: stream.ready` | — | `StreamReadyData` | stream is live; events with `id > cursor` follow |
-| `event: <CoreEventType>` | event id | `CoreEvent` | one persisted event |
+| `event: <CoreEventType>` | event id | `StreamedCoreEvent` | one persisted event (`CoreEvent` + `prev_id`) |
 | `: hb` (comment) | — | — | heartbeat every 15 s |
 | `event: stream.shutdown` | — | `{ contract_version }` | the Core is stopping; reconnect later |
 
@@ -169,7 +173,10 @@ Delivery guarantees:
 - Events are written in the same SQLite transaction as the change they describe and sent only after
   it commits: an event exists if and only if the change is real.
 - Ids are strictly increasing (one Core process, one SQLite writer). Replay after a cursor and live
-  delivery are the same code path: no gap, no repeat on one stream. Across reconnects delivery is
+  delivery are the same code path: no gap, no repeat on one stream. Ids are NOT contiguous (never
+  assume `id + 1`). Each streamed event carries `prev_id`, the id of the previous event on the same
+  stream (the starting cursor for the first one): if `prev_id` differs from the last id you applied,
+  a frame was lost in transit, so reconnect with your last id. Across reconnects delivery is
   at-least-once; ignore any event with `id <=` the last applied id.
 - Clients must ignore unknown `event:` types and unknown fields (new ones may be added).
 - The stream is read-only: connecting or disconnecting never changes a task. Approvals expire on a
@@ -200,25 +207,31 @@ Delivery guarantees:
 | `approval.decided`    | approved, rejected, or expired | `{ decision: "APPROVE" \| "REJECT" \| "EXPIRED" }` |
 | `action.verified`     | the Core checked the disk after executing | `{ verified: boolean }` |
 
+`StreamedCoreEvent` = `CoreEvent` + `prev_id: number` (stream only; see delivery guarantees).
+
 ### 6.2 `StreamReadyData`
 
-`{ contract_version, cursor: number, last_event_id: number }` — events with `id > cursor` follow;
-`last_event_id` is the newest event when the stream opened.
+`{ contract_version, stream_id: string, cursor: number, last_event_id: number }` — events with
+`id > cursor` follow; `last_event_id` is the newest event when the stream opened. `stream_id` is a
+random id fixed when the Core database was created: keep it with your cursor.
 
 ### 6.3 `StreamResetData`
 
-`{ contract_version, last_event_id: number }` — sent before `stream.ready` when the requested
-cursor is greater than the newest event. The stream continues from `last_event_id`.
+`{ contract_version, stream_id: string, last_event_id: number }` — sent before `stream.ready` when
+the requested cursor belongs to another database. The stream continues from `last_event_id`.
 
-### 6.4 `EventsPage` — `GET /v1/events/page?after=<n>&limit=<1-500>`
+### 6.4 `EventsPage` — `GET /v1/events/page?after=<n>&limit=<1-500>&wait=<0-25>&stream_id=<id>`
 
 The same events as JSON, for Replay, backfill, and clients that poll instead of streaming
-(e.g. a first Unreal bridge). `after` defaults to 0, `limit` to 500.
+(e.g. a first Unreal bridge). `after` defaults to 0, `limit` to 500. With `wait=<seconds>` and
+nothing newer than `after`, the request waits up to that long for the next committed event
+(long-poll; 25 s max, under Unreal's 30 s HTTP activity timeout) and then answers.
 
 | field            | type          | notes |
 |------------------|---------------|-------|
 | contract_version | `"0.1"`       | |
+| stream_id        | string        | this database's id (see 6.2) |
 | events           | `CoreEvent[]` | oldest first, all with `id > after` |
 | next_cursor      | number        | pass as `after` for the next page (unchanged = caught up) |
 | last_event_id    | number        | newest event in the Core |
-| reset            | boolean       | `true` when `after` is ahead of the newest event: refetch state, continue from `last_event_id` |
+| reset            | boolean       | `true` when the cursor belongs to another database (ahead of the newest event, or other `stream_id`): refetch state, continue from `next_cursor` |

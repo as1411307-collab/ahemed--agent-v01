@@ -130,6 +130,8 @@ export class Store {
     ref: { conversationId?: string | null; taskId?: string | null; actionId?: string | null },
     data: Record<string, unknown> = {},
   ): void {
+    // Outside a transaction an event could commit without its change (or the reverse).
+    if (!this.db.inTransaction) throw new Error("appendEvent must run inside Store.tx");
     this.db
       .prepare("INSERT INTO events (ts, type, conversation_id, task_id, action_id, data) VALUES (?, ?, ?, ?, ?, ?)")
       .run(this.now(), type, ref.conversationId ?? null, ref.taskId ?? null, ref.actionId ?? null, JSON.stringify(data));
@@ -139,6 +141,11 @@ export class Store {
   /** Events with id > after, oldest first. */
   eventsAfter(after: number, limit = 500): EventRow[] {
     return this.db.prepare("SELECT * FROM events WHERE id > ? ORDER BY id LIMIT ?").all(after, limit) as EventRow[];
+  }
+
+  /** Random id of this database, fixed when it was created. */
+  streamId(): string {
+    return (this.db.prepare("SELECT value FROM meta WHERE key = 'stream_id'").get() as { value: string }).value;
   }
 
   lastEventId(): number {
@@ -165,7 +172,19 @@ export class Store {
     this.notifyScheduled = true;
     queueMicrotask(() => {
       this.notifyScheduled = false;
-      for (const listener of [...this.eventListeners]) listener();
+      for (const listener of [...this.eventListeners]) {
+        // A throw here would be uncaught and stop the whole Core; each listener handles its own errors,
+        // this is the last line of defence.
+        try {
+          listener();
+        } catch (err) {
+          try {
+            this.audit("ERROR", {}, { where: "event listener", message: (err as Error).message });
+          } catch {
+            // the database itself is failing; nothing more to record
+          }
+        }
+      }
     });
   }
 

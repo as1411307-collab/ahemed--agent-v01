@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 
 export type DB = Database.Database;
@@ -96,6 +97,13 @@ CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events
 BEGIN SELECT RAISE(ABORT, 'events is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events
 BEGIN SELECT RAISE(ABORT, 'events is append-only'); END;
+
+-- Identity of this database. Event ids restart at 1 in a new database file, so clients that keep a
+-- cursor also keep stream_id and resync when it changes.
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
 
 export function openDb(file: string): DB {
@@ -104,5 +112,6 @@ export function openDb(file: string): DB {
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
   db.exec(SCHEMA);
+  db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('stream_id', ?)").run(randomUUID());
   return db;
 }
