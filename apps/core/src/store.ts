@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Attachment, DecisionValue, ErrorCode, RiskLevel, TaskStatus } from "@ahmed/contract";
+import type { Attachment, CoreEventType, DecisionValue, ErrorCode, RiskLevel, TaskStatus } from "@ahmed/contract";
 import type { DB } from "./db.js";
 import { assertTransition } from "./stateMachine.js";
 
@@ -65,6 +65,16 @@ export interface AuditRow {
   detail: string | null;
 }
 
+export interface EventRow {
+  id: number;
+  ts: string;
+  type: CoreEventType;
+  conversation_id: string | null;
+  task_id: string | null;
+  action_id: string | null;
+  data: string;
+}
+
 export interface TaskPatch {
   used_tool?: string | null;
   result_message?: string | null;
@@ -81,6 +91,9 @@ export class ConcurrentTransitionError extends Error {
 
 /** All persistence goes through here. State lives in SQLite, never in memory. */
 export class Store {
+  private readonly eventListeners = new Set<() => void>();
+  private notifyScheduled = false;
+
   constructor(
     readonly db: DB,
     readonly clock: Clock,
@@ -106,6 +119,56 @@ export class Store {
       : (this.db.prepare("SELECT * FROM audit_log ORDER BY id").all() as AuditRow[]);
   }
 
+  // ---- client-facing event log (GET /v1/events) ----
+
+  /**
+   * Appends a public event. Call it in the same transaction as the change it describes, so an event
+   * exists if and only if that change was committed.
+   */
+  appendEvent(
+    type: CoreEventType,
+    ref: { conversationId?: string | null; taskId?: string | null; actionId?: string | null },
+    data: Record<string, unknown> = {},
+  ): void {
+    this.db
+      .prepare("INSERT INTO events (ts, type, conversation_id, task_id, action_id, data) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(this.now(), type, ref.conversationId ?? null, ref.taskId ?? null, ref.actionId ?? null, JSON.stringify(data));
+    this.scheduleEventNotify();
+  }
+
+  /** Events with id > after, oldest first. */
+  eventsAfter(after: number, limit = 500): EventRow[] {
+    return this.db.prepare("SELECT * FROM events WHERE id > ? ORDER BY id LIMIT ?").all(after, limit) as EventRow[];
+  }
+
+  lastEventId(): number {
+    const row = this.db.prepare("SELECT MAX(id) AS id FROM events").get() as { id: number | null };
+    return row.id ?? 0;
+  }
+
+  /**
+   * Subscribes to "new events may exist". Listeners pull with eventsAfter(their cursor), so they never
+   * see a row from a rolled-back transaction: the poke runs in a microtask, after the synchronous
+   * better-sqlite3 transaction that appended the event has committed or rolled back.
+   */
+  onEvents(listener: () => void): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
+  }
+
+  eventListenerCount(): number {
+    return this.eventListeners.size;
+  }
+
+  private scheduleEventNotify(): void {
+    if (this.notifyScheduled) return;
+    this.notifyScheduled = true;
+    queueMicrotask(() => {
+      this.notifyScheduled = false;
+      for (const listener of [...this.eventListeners]) listener();
+    });
+  }
+
   ensureConversation(id: string): void {
     this.db.prepare("INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?)").run(id, this.now());
   }
@@ -121,11 +184,15 @@ export class Store {
     attachments?: Attachment[];
     taskId?: string | null;
   }): void {
-    this.db
-      .prepare(
-        "INSERT INTO messages (id, conversation_id, role, content, attachments, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(randomUUID(), m.conversationId, m.role, m.content, JSON.stringify(m.attachments ?? []), m.taskId ?? null, this.now());
+    const id = randomUUID();
+    this.tx(() => {
+      this.db
+        .prepare(
+          "INSERT INTO messages (id, conversation_id, role, content, attachments, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(id, m.conversationId, m.role, m.content, JSON.stringify(m.attachments ?? []), m.taskId ?? null, this.now());
+      this.appendEvent("message.created", { conversationId: m.conversationId, taskId: m.taskId }, { message_id: id, role: m.role });
+    });
   }
 
   listMessages(conversationId: string): MessageRow[] {
@@ -137,12 +204,15 @@ export class Store {
   createTask(t: { conversationId: string; requestId: string; userMessage: string; attachments: Attachment[] }): TaskRow {
     const id = randomUUID();
     const now = this.now();
-    this.db
-      .prepare(
-        `INSERT INTO tasks (id, conversation_id, request_id, user_message, status, attachments, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'RECEIVED', ?, ?, ?)`,
-      )
-      .run(id, t.conversationId, t.requestId, t.userMessage, JSON.stringify(t.attachments), now, now);
+    this.tx(() => {
+      this.db
+        .prepare(
+          `INSERT INTO tasks (id, conversation_id, request_id, user_message, status, attachments, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'RECEIVED', ?, ?, ?)`,
+        )
+        .run(id, t.conversationId, t.requestId, t.userMessage, JSON.stringify(t.attachments), now, now);
+      this.appendEvent("task.created", { conversationId: t.conversationId, taskId: id }, { request_id: t.requestId, status: "RECEIVED" });
+    });
     return this.getTask(id)!;
   }
 
@@ -165,45 +235,60 @@ export class Store {
   }
 
   transition(taskId: string, to: TaskStatus, patch: TaskPatch = {}): TaskRow {
-    const task = this.getTask(taskId);
-    if (!task) throw new Error(`Task ${taskId} not found`);
-    assertTransition(task.status, to);
-    const sets = ["status = ?", "updated_at = ?"];
-    const values: unknown[] = [to, this.now()];
-    for (const [k, v] of Object.entries(patch)) {
-      sets.push(`${k} = ?`);
-      values.push(v ?? null);
-    }
-    const res = this.db
-      .prepare(`UPDATE tasks SET ${sets.join(", ")} WHERE id = ? AND status = ?`)
-      .run(...values, taskId, task.status);
-    if (res.changes !== 1) throw new ConcurrentTransitionError(taskId, task.status);
-    this.audit("STATUS_CHANGED", { taskId }, { from: task.status, to });
-    return this.getTask(taskId)!;
+    return this.tx(() => {
+      const task = this.getTask(taskId);
+      if (!task) throw new Error(`Task ${taskId} not found`);
+      assertTransition(task.status, to);
+      const sets = ["status = ?", "updated_at = ?"];
+      const values: unknown[] = [to, this.now()];
+      for (const [k, v] of Object.entries(patch)) {
+        sets.push(`${k} = ?`);
+        values.push(v ?? null);
+      }
+      const res = this.db
+        .prepare(`UPDATE tasks SET ${sets.join(", ")} WHERE id = ? AND status = ?`)
+        .run(...values, taskId, task.status);
+      if (res.changes !== 1) throw new ConcurrentTransitionError(taskId, task.status);
+      this.audit("STATUS_CHANGED", { taskId }, { from: task.status, to });
+      const updated = this.getTask(taskId)!;
+      this.appendEvent(
+        "task.status_changed",
+        { conversationId: updated.conversation_id, taskId },
+        { from: task.status, to, error_code: updated.error_code },
+      );
+      return updated;
+    });
   }
 
   createAction(a: Omit<ActionRow, "id" | "idempotency_key" | "created_at" | "decision" | "decided_at" | "verified">): ActionRow {
     const id = randomUUID();
-    this.db
-      .prepare(
-        `INSERT INTO actions (id, task_id, idempotency_key, tool, operation, description, risk_level,
-           affected_resource, destination, input, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        a.task_id,
-        randomUUID(),
-        a.tool,
-        a.operation,
-        a.description,
-        a.risk_level,
-        a.affected_resource,
-        a.destination,
-        a.input,
-        this.now(),
-        a.expires_at,
+    this.tx(() => {
+      this.db
+        .prepare(
+          `INSERT INTO actions (id, task_id, idempotency_key, tool, operation, description, risk_level,
+             affected_resource, destination, input, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          a.task_id,
+          randomUUID(),
+          a.tool,
+          a.operation,
+          a.description,
+          a.risk_level,
+          a.affected_resource,
+          a.destination,
+          a.input,
+          this.now(),
+          a.expires_at,
+        );
+      this.appendEvent(
+        "approval.requested",
+        { conversationId: this.getTask(a.task_id)?.conversation_id, taskId: a.task_id, actionId: id },
+        { operation: a.operation, tool: a.tool, risk_level: a.risk_level, expires_at: a.expires_at },
       );
+    });
     return this.getAction(id)!;
   }
 
@@ -227,14 +312,27 @@ export class Store {
   }
 
   recordDecision(actionId: string, decision: DecisionValue | "EXPIRED", decidedAt = this.now()): boolean {
-    const res = this.db
-      .prepare("UPDATE actions SET decision = ?, decided_at = ? WHERE id = ? AND decision IS NULL")
-      .run(decision, decidedAt, actionId);
-    return res.changes === 1;
+    return this.tx(() => {
+      const res = this.db
+        .prepare("UPDATE actions SET decision = ?, decided_at = ? WHERE id = ? AND decision IS NULL")
+        .run(decision, decidedAt, actionId);
+      if (res.changes !== 1) return false;
+      this.appendEvent("approval.decided", this.actionRef(actionId), { decision });
+      return true;
+    });
   }
 
   setVerified(actionId: string, verified: boolean): void {
-    this.db.prepare("UPDATE actions SET verified = ? WHERE id = ?").run(verified ? 1 : 0, actionId);
+    this.tx(() => {
+      this.db.prepare("UPDATE actions SET verified = ? WHERE id = ?").run(verified ? 1 : 0, actionId);
+      this.appendEvent("action.verified", this.actionRef(actionId), { verified });
+    });
+  }
+
+  private actionRef(actionId: string): { conversationId?: string; taskId?: string; actionId: string } {
+    const action = this.getAction(actionId);
+    const task = action ? this.getTask(action.task_id) : undefined;
+    return { conversationId: task?.conversation_id, taskId: action?.task_id, actionId };
   }
 
   insertExecution(action: ActionRow): void {

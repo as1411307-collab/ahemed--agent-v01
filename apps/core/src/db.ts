@@ -78,6 +78,24 @@ CREATE TRIGGER IF NOT EXISTS audit_log_no_update BEFORE UPDATE ON audit_log
 BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS audit_log_no_delete BEFORE DELETE ON audit_log
 BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
+
+-- Client-facing event log behind GET /v1/events. Written in the same transaction as the state
+-- change it describes; id is the public, strictly increasing stream cursor. Minimal payloads only:
+-- message text, file contents and plans stay in audit_log and the REST responses.
+CREATE TABLE IF NOT EXISTS events (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts              TEXT NOT NULL,
+  type            TEXT NOT NULL,
+  conversation_id TEXT,
+  task_id         TEXT,
+  action_id       TEXT,
+  data            TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events
+BEGIN SELECT RAISE(ABORT, 'events is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events
+BEGIN SELECT RAISE(ABORT, 'events is append-only'); END;
 `;
 
 export function openDb(file: string): DB {

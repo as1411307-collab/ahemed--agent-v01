@@ -115,9 +115,12 @@ Response: `AgentResponse` for the task.
 | GET  | `/v1/tasks/{task_id}` | — | `AgentResponse` |
 | POST | `/v1/tasks/{task_id}/actions/{action_id}/decision` | `ApprovalDecision` | `AgentResponse` |
 | GET  | `/v1/conversations/{conversation_id}` | — | `ConversationResponse` |
+| GET  | `/v1/events` | — | `text/event-stream` (section 6) |
+| GET  | `/v1/events/page?after=&limit=` | — | `EventsPage` (section 6.4) |
 
-The app polls `GET /v1/tasks/{task_id}` every 2 seconds while the task is still running.
-No connection is held open waiting for the user.
+REST stays the source of truth. The event stream only tells clients *when* to refetch; a client
+that cannot stream keeps polling `GET /v1/tasks/{task_id}` (every 2 seconds while a task runs) or
+`GET /v1/events/page`.
 
 ### 4.1 `ConversationResponse`
 
@@ -136,3 +139,86 @@ No connection is held open waiting for the user.
 
 `UNAUTHORIZED`, `BAD_REQUEST`, `NOT_FOUND`, `CONFLICT`, `APPROVAL_EXPIRED`, `UNSUPPORTED_FILE_TYPE`,
 `PATH_OUTSIDE_WORKSPACE`, `TOOL_ERROR`, `EXECUTION_FAILED`, `MODEL_ERROR`, `INTERRUPTED`, `INTERNAL`.
+
+## 6. Event stream — `GET /v1/events`
+
+A resumable [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
+stream of persisted Core events. Same Bearer header as every endpoint; the token is never accepted
+in the URL (so native `EventSource` cannot be used: clients read the body with `fetch`).
+
+Request:
+- Cursor: header `Last-Event-ID: <n>` (sent automatically on reconnect) or query `?after=<n>`;
+  the header wins when both are present. `n` is a non-negative integer, otherwise `400`.
+- No cursor = start from now. Recommended client flow: open the stream, wait for `stream.ready`,
+  then load state over REST; every later change arrives as an event, so nothing falls in between.
+- Clients should send `Accept-Encoding: identity` (the Core never compresses this route).
+
+Response: `200`, `Content-Type: text/event-stream; charset=utf-8`,
+`Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`. Frames:
+
+| frame | `id:` | `data` | meaning |
+|-------|-------|--------|---------|
+| `retry: 3000` | — | — | reconnect delay hint (ms), first line of every stream |
+| `event: stream.reset` | newest id | `StreamResetData` | cursor was ahead of the Core (database replaced): drop local state, refetch over REST |
+| `event: stream.ready` | — | `StreamReadyData` | stream is live; events with `id > cursor` follow |
+| `event: <CoreEventType>` | event id | `CoreEvent` | one persisted event |
+| `: hb` (comment) | — | — | heartbeat every 15 s |
+| `event: stream.shutdown` | — | `{ contract_version }` | the Core is stopping; reconnect later |
+
+Delivery guarantees:
+- Events are written in the same SQLite transaction as the change they describe and sent only after
+  it commits: an event exists if and only if the change is real.
+- Ids are strictly increasing (one Core process, one SQLite writer). Replay after a cursor and live
+  delivery are the same code path: no gap, no repeat on one stream. Across reconnects delivery is
+  at-least-once; ignore any event with `id <=` the last applied id.
+- Clients must ignore unknown `event:` types and unknown fields (new ones may be added).
+- The stream is read-only: connecting or disconnecting never changes a task. Approvals expire on a
+  Core timer whether or not anyone is connected.
+- Limits: at most 8 open streams (opening a 9th closes the oldest, so a client whose old connection
+  went half-open can always reconnect); a stream whose socket does not drain for 60 s is closed;
+  every stream is ended after 30 minutes. In all cases the client reconnects with its cursor.
+
+### 6.1 `CoreEvent`
+
+| field            | type                   | notes |
+|------------------|------------------------|-------|
+| contract_version | `"0.1"`                | |
+| id               | number                 | stream cursor; equals the SSE `id:` |
+| type             | `CoreEventType`        | equals the SSE `event:` |
+| ts               | string                 | ISO time the change was committed |
+| conversation_id  | string \| null        | |
+| task_id          | string \| null        | |
+| action_id        | string \| null        | |
+| data             | object                 | per type, below. Never message text, file contents, paths or plans: fetch those over REST |
+
+| `CoreEventType`       | written when | `data` |
+|-----------------------|--------------|--------|
+| `task.created`        | a request created a task | `{ request_id, status: "RECEIVED" }` |
+| `task.status_changed` | every state-machine transition | `{ from: TaskStatus, to: TaskStatus, error_code: ErrorCode \| null }` |
+| `message.created`     | a user or assistant message was stored | `{ message_id, role: "user" \| "assistant" }` |
+| `approval.requested`  | a write action needs approval | `{ operation, tool, risk_level, expires_at }` |
+| `approval.decided`    | approved, rejected, or expired | `{ decision: "APPROVE" \| "REJECT" \| "EXPIRED" }` |
+| `action.verified`     | the Core checked the disk after executing | `{ verified: boolean }` |
+
+### 6.2 `StreamReadyData`
+
+`{ contract_version, cursor: number, last_event_id: number }` — events with `id > cursor` follow;
+`last_event_id` is the newest event when the stream opened.
+
+### 6.3 `StreamResetData`
+
+`{ contract_version, last_event_id: number }` — sent before `stream.ready` when the requested
+cursor is greater than the newest event. The stream continues from `last_event_id`.
+
+### 6.4 `EventsPage` — `GET /v1/events/page?after=<n>&limit=<1-500>`
+
+The same events as JSON, for Replay, backfill, and clients that poll instead of streaming
+(e.g. a first Unreal bridge). `after` defaults to 0, `limit` to 500.
+
+| field            | type          | notes |
+|------------------|---------------|-------|
+| contract_version | `"0.1"`       | |
+| events           | `CoreEvent[]` | oldest first, all with `id > after` |
+| next_cursor      | number        | pass as `after` for the next page (unchanged = caught up) |
+| last_event_id    | number        | newest event in the Core |
+| reset            | boolean       | `true` when `after` is ahead of the newest event: refetch state, continue from `last_event_id` |

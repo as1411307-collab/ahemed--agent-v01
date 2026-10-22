@@ -11,12 +11,17 @@ import {
 } from "@ahmed/contract";
 import { Agent, APPROVAL_TTL_MS } from "./agent.js";
 import { openDb } from "./db.js";
+import { DEFAULT_EVENT_STREAM_OPTIONS, registerEventStream, type EventStreamOptions, type EventStreams } from "./events.js";
 import type { ModelClient } from "./model.js";
 import { conversationResponse, errorResponse, taskResponse } from "./responses.js";
 import { Store, type Clock } from "./store.js";
 import { Workspace } from "./workspace.js";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+/** Pending approvals are expired on this timer too, so clients that only listen to /v1/events see it. */
+const EXPIRY_SWEEP_MS = 10_000;
+/** If graceful shutdown has not finished by then, open sockets are cut so Ctrl+C always exits. */
+const FORCE_CLOSE_AFTER_MS = 3_000;
 
 export interface CoreOptions {
   dbFile: string;
@@ -26,6 +31,8 @@ export interface CoreOptions {
   clock?: Clock;
   approvalTtlMs?: number;
   logger?: boolean;
+  events?: Partial<EventStreamOptions>;
+  expirySweepMs?: number;
 }
 
 export interface Core {
@@ -33,6 +40,7 @@ export interface Core {
   store: Store;
   agent: Agent;
   workspace: Workspace;
+  events: EventStreams;
   /** Resolves when all background message processing has finished. */
   drain(): Promise<void>;
   close(): Promise<void>;
@@ -58,6 +66,18 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
       return reply.code(401).send(errorResponse("UNAUTHORIZED", "Missing or invalid app token."));
     }
   });
+
+  const events = registerEventStream(app, store, { ...DEFAULT_EVENT_STREAM_OPTIONS, ...opts.events });
+
+  // Approval expiry must not depend on a client polling: sweep on a timer as well.
+  const expirySweep = setInterval(() => {
+    try {
+      agent.expireStale();
+    } catch (err) {
+      app.log.error(err);
+    }
+  }, opts.expirySweepMs ?? EXPIRY_SWEEP_MS);
+  expirySweep.unref();
 
   app.setNotFoundHandler((_req, reply) => reply.code(404).send(errorResponse("NOT_FOUND", "Route not found.")));
   app.setErrorHandler((err: { statusCode?: number; message: string }, req, reply) => {
@@ -203,10 +223,18 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     store,
     agent,
     workspace,
+    events,
     drain,
     close: async () => {
+      clearInterval(expirySweep);
       await drain();
-      await app.close();
+      const force = setTimeout(() => app.server.closeAllConnections(), FORCE_CLOSE_AFTER_MS);
+      force.unref();
+      try {
+        await app.close();
+      } finally {
+        clearTimeout(force);
+      }
       db.close();
     },
   };
