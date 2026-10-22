@@ -39,6 +39,8 @@ interface EventsModule {
 }
 
 const CONV = "conv-phone";
+/** With Math.random mocked to 0 the earliest reconnect is 500 ms (clean end) or 1 s (failure). */
+const NO_RETRY_WINDOW_MS = 1_500;
 let env: Env;
 let core: Core;
 let stop: (() => void) | undefined;
@@ -143,7 +145,9 @@ describe("phone event client against a real Core", () => {
     stop = connectEvents(handlers).stop;
     await vi.waitFor(() => expect(r.fatal).toHaveLength(1));
     expect(r.fatal[0]).toContain("app token");
-    await new Promise((res) => setTimeout(res, 300));
+    // Longer than the earliest possible retry (1 s floor x 0.5 jitter with Math.random mocked to 0).
+    await new Promise((res) => setTimeout(res, NO_RETRY_WINDOW_MS));
+    expect(r.states.filter((x) => x === "connecting")).toHaveLength(1);
     expect(r.ready).toBe(0);
     expect(r.states.at(-1)).toBe("offline");
     expect(core.events.openCount()).toBe(0);
@@ -201,7 +205,9 @@ describe("phone event client against a real Core", () => {
   });
 
   it("falls back to polling quietly when the Core has no event stream (404)", async () => {
+    let requests = 0;
     const fake = http.createServer((_req, res) => {
+      requests++;
       res.writeHead(404, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: { code: "NOT_FOUND", message: "Route not found." } }));
     });
@@ -211,7 +217,8 @@ describe("phone event client against a real Core", () => {
       const { r, handlers } = record();
       stop = connectEvents(handlers).stop;
       await vi.waitFor(() => expect(r.states.at(-1)).toBe("offline"));
-      await new Promise((res) => setTimeout(res, 300));
+      await new Promise((res) => setTimeout(res, NO_RETRY_WINDOW_MS));
+      expect(requests).toBe(1);
       expect(r.states.filter((x) => x === "connecting")).toHaveLength(1);
       expect(r.fatal).toEqual([]);
     } finally {
@@ -227,8 +234,9 @@ describe("phone event client against a real Core", () => {
     await vi.waitFor(() => expect(core.events.openCount()).toBe(1));
     s.stop();
     await vi.waitFor(() => expect(core.events.openCount()).toBe(0));
-    await new Promise((res) => setTimeout(res, 300));
+    await new Promise((res) => setTimeout(res, NO_RETRY_WINDOW_MS));
     expect(core.events.openCount()).toBe(0);
+    expect(r.states.filter((x) => x === "connecting")).toHaveLength(1);
     expect(r.ready).toBe(1);
   });
 });

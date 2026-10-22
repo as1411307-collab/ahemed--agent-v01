@@ -328,12 +328,24 @@ describe("GET /v1/events", () => {
   it("cleans up listeners and timers when the client disconnects", async () => {
     await start();
     const base = core.store.eventListenerCount();
+    const created: unknown[] = [];
+    const realSetInterval = globalThis.setInterval;
+    const intervalSpy = vi.spyOn(globalThis, "setInterval").mockImplementation(((fn: () => void, ms?: number) => {
+      const t = realSetInterval(fn, ms);
+      created.push(t);
+      return t;
+    }) as typeof setInterval);
+    const clearSpy = vi.spyOn(globalThis, "clearInterval");
     const s = await openStream(core);
     await vi.waitFor(() => expect(core.events.openCount()).toBe(1));
     expect(core.store.eventListenerCount()).toBe(base + 1);
     s.disconnect();
     await vi.waitFor(() => expect(core.events.openCount()).toBe(0));
     expect(core.store.eventListenerCount()).toBe(base);
+    expect(created.length).toBe(1);
+    expect(clearSpy).toHaveBeenCalledWith(created[0]);
+    intervalSpy.mockRestore();
+    clearSpy.mockRestore();
     // The Core keeps working after a client vanished mid-stream.
     expect((await sendAndWait(core, CONV, "still here")).status).toBe("COMPLETED");
   });

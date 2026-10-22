@@ -69,7 +69,11 @@ describe("SseParser (shared by the app and future TS clients)", () => {
   });
 
   it("does not emit a frame until its terminating blank line arrives", () => {
-    const { frames } = parse(["id: 1\nevent: a\ndata: {}\n"]);
+    const { frames, parser } = parse(["id: 1\nevent: a\ndata: {}\n"]);
     expect(frames).toEqual([]);
+    // WHATWG: the id becomes the last event ID only when the frame is dispatched.
+    expect(parser.lastEventId).toBe("");
+    parser.push("\n");
+    expect(parser.lastEventId).toBe("1");
   });
 });

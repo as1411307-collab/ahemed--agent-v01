@@ -22,6 +22,8 @@ export class SseParser {
   private event = "";
   private started = false;
   private skipLf = false;
+  private idBuffer = "";
+  /** Updated when a frame is dispatched (WHATWG "last event ID string"). */
   lastEventId = "";
 
   constructor(private readonly handlers: SseHandlers) {}
@@ -69,7 +71,7 @@ export class SseParser {
         this.data.push(value);
         break;
       case "id":
-        if (!value.includes("\u0000")) this.lastEventId = value;
+        if (!value.includes("\u0000")) this.idBuffer = value;
         break;
       case "retry":
         if (/^\d+$/.test(value)) this.handlers.onRetry?.(Number(value));
@@ -81,6 +83,7 @@ export class SseParser {
   }
 
   private dispatch(): void {
+    this.lastEventId = this.idBuffer;
     const event = this.event;
     const data = this.data;
     this.event = "";

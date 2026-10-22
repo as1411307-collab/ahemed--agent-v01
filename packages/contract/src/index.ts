@@ -224,7 +224,8 @@ export interface StreamResetData {
   last_event_id: number;
 }
 
-/** First frame of every stream (SSE `event: stream.ready`, no `id:`): where delivery starts. */
+/** Sent once per stream before any event (SSE `event: stream.ready`, no `id:`; after `stream.reset`
+ *  when there is one): where delivery starts. */
 export interface StreamReadyData {
   contract_version: ContractVersion;
   /** Identity of the Core database. Keep it with your cursor and send it back as ?stream_id=. */

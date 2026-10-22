@@ -46,6 +46,7 @@ const STORAGE_KEY = "ahmed.conversation_id";
 const POLL_MS = 2000;
 /** Several events arrive per task step; refetch once for the burst. */
 const REFRESH_DEBOUNCE_MS = 150;
+const MAX_REFRESH_RETRY_MS = 30_000;
 
 const isRunning = (s: TaskStatus | null) => !!s && !FINAL_STATUSES.includes(s) && s !== "WAITING_FOR_APPROVAL";
 
@@ -93,12 +94,14 @@ export default function App() {
   const listRef = useRef<FlatList<ConversationMessage>>(null);
 
   // ---- restore conversation id and state from the Core ----
-  const load = useCallback(async (id: string) => {
+  const load = useCallback(async (id: string): Promise<boolean> => {
     try {
       setConv(await getConversation(id));
       setError(null);
+      return true;
     } catch (e) {
       setError({ text: errorText(e), retry: () => void load(id) });
+      return false;
     } finally {
       setLoading(false);
     }
@@ -125,13 +128,21 @@ export default function App() {
   useEffect(() => {
     if (!conversationId) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const refresh = () => {
+    let cancelled = false;
+    let failures = 0;
+    // While live there is no polling, so a failed refresh must retry itself (2 s, 4 s, ... 30 s).
+    const refresh = (delay = REFRESH_DEBOUNCE_MS) => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => void load(conversationId), REFRESH_DEBOUNCE_MS);
+      timer = setTimeout(async () => {
+        const ok = await load(conversationId);
+        if (cancelled) return;
+        failures = ok ? 0 : failures + 1;
+        if (!ok) refresh(Math.min(MAX_REFRESH_RETRY_MS, 1_000 * 2 ** failures));
+      }, delay);
     };
     const stream = connectEvents({
-      onReady: refresh,
-      onReset: refresh,
+      onReady: () => refresh(),
+      onReset: () => refresh(),
       onEvent: (e) => {
         if (e.conversation_id === conversationId) refresh();
       },
@@ -139,6 +150,7 @@ export default function App() {
       onFatal: (e) => setError({ text: errorText(e), retry: () => void load(conversationId) }),
     });
     return () => {
+      cancelled = true;
       if (timer) clearTimeout(timer);
       stream.stop();
     };
