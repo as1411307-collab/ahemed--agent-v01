@@ -290,6 +290,41 @@ describe("GET /v1/events", () => {
     expect(s.text()).not.toContain("ghost");
   });
 
+  it("has no HEAD route that could hold a stream slot without sending headers", async () => {
+    await start();
+    const head = await core.app.inject({ method: "HEAD", url: "/v1/events", headers: AUTH });
+    expect(head.statusCode).toBe(404);
+    expect(core.events.openCount()).toBe(0);
+    expect((await core.app.inject({ method: "HEAD", url: "/v1/events" })).statusCode).toBe(401);
+  });
+
+  it("closes the stream and clears its timers when the first catch-up read fails", async () => {
+    await start();
+    const created: unknown[] = [];
+    const realSetInterval = globalThis.setInterval;
+    const intervalSpy = vi.spyOn(globalThis, "setInterval").mockImplementation(((fn: () => void, ms?: number) => {
+      const t = realSetInterval(fn, ms);
+      created.push(t);
+      return t;
+    }) as typeof setInterval);
+    const clearSpy = vi.spyOn(globalThis, "clearInterval");
+    const readSpy = vi.spyOn(core.store, "eventsAfter").mockImplementationOnce(() => {
+      throw new Error("database is locked");
+    });
+    try {
+      await openStream(core, "?after=0");
+      await vi.waitFor(() => expect(core.events.openCount()).toBe(0));
+      expect(core.store.eventListenerCount()).toBe(0);
+      expect(created.length).toBeGreaterThan(0);
+      for (const t of created) expect(clearSpy).toHaveBeenCalledWith(t);
+      expect(core.store.listAudit().some((a) => a.event === "ERROR" && a.detail?.includes("database is locked"))).toBe(true);
+    } finally {
+      intervalSpy.mockRestore();
+      clearSpy.mockRestore();
+      readSpy.mockRestore();
+    }
+  });
+
   it("cleans up listeners and timers when the client disconnects", async () => {
     await start();
     const base = core.store.eventListenerCount();

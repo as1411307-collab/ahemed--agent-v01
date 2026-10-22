@@ -158,7 +158,9 @@ export function registerEventStream(app: FastifyInstance, store: Store, opts: Ev
     },
   );
 
-  app.get<{ Querystring: { after?: string; stream_id?: string } }>("/v1/events", (req, reply) => {
+  // No automatic HEAD route: a HEAD response has no body, so it would hold a stream slot without ever
+  // sending its headers.
+  app.get<{ Querystring: { after?: string; stream_id?: string } }>("/v1/events", { exposeHeadRoute: false }, (req, reply) => {
     const requested = parseCursor(req.headers["last-event-id"], req.query.after);
     if (requested === null) {
       return reply.code(400).send(errorResponse("BAD_REQUEST", "Event cursor must be a non-negative integer."));
@@ -266,15 +268,17 @@ export function registerEventStream(app: FastifyInstance, store: Store, opts: Ev
       prelude += frame("stream.ready", ready);
       write(prelude);
 
-      // Subscribe and catch up in the same synchronous turn, so no commit can slip between them.
-      unsubscribe = store.onEvents(pump);
-      pump();
+      // Timers first, so a failure in the first catch-up (cleanup) clears them too.
       heartbeat = setInterval(() => {
         if (!draining) write(": hb\n\n");
       }, opts.heartbeatMs);
       heartbeat.unref();
       lifetime = setTimeout(() => end(), opts.maxLifetimeMs);
       lifetime.unref();
+      // Subscribe and catch up in the same synchronous turn, so no commit can slip between them.
+      unsubscribe = store.onEvents(pump);
+      pump();
+      if (closed) return;
       req.log.info({ cursor, last, open: open.size }, "event stream opened");
     } catch (err) {
       // Errors after hijack bypass Fastify's error handler: record them here and drop the connection.
