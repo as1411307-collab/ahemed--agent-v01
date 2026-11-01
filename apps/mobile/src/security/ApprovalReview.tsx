@@ -14,7 +14,7 @@ export function ApprovalReview(props:{
   onReject:()=>void;
 }){
   // Freeze the reviewed action snapshot so it cannot change between display and signing.
-  const [snapshot]=useState<DisplayEnvelope>(()=>structuredClone(props.envelope));
+  const [snapshot]=useState<DisplayEnvelope>(()=>JSON.parse(JSON.stringify(props.envelope)) as DisplayEnvelope);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState<string|null>(null);
   const rows=approvalDisplayRows(snapshot);
