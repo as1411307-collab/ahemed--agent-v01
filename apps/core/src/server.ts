@@ -136,6 +136,23 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     return {row,envelope:record.envelope};
   }
 
+  // Owner-authenticated truth endpoint: only facts from the currently deployed Core.
+  // Never infer production readiness from a successful HTTP response or a demo signature.
+  app.get("/v1/system/capabilities", async () => ({
+    schemaVersion: 1,
+    mode: deviceSecurity ? "SIGNED_DEVICE_DEMO_ONLY" : "TEST_FIXTURE_ONLY",
+    features: {
+      textMessages: "MODEL_BACKED",
+      fileUploadAndRead: "WORKSPACE_SCOPED",
+      modelInputMayLeaveServer: true,
+      sensitiveWorkspaceActions: deviceSecurity ? "BLOCKED" : "TEST_FIXTURE_ONLY",
+      signedApprovalEffects: "DEMO_NO_EFFECT",
+      hermesRuns: opts.hermesBridge?.transport ? "INJECTED_TRANSPORT_DEMO_ONLY" : "LIVE_RUN_START_BLOCKED",
+      n8nWorkflowExecution: "NOT_CONNECTED",
+      liveVoice: "NOT_IMPLEMENTED",
+    },
+  }));
+
   app.setNotFoundHandler((_req, reply) => reply.code(404).send(errorResponse("NOT_FOUND", "Route not found.")));
   app.setErrorHandler((err: { statusCode?: number; message: string }, req, reply) => {
     const status = err.statusCode && err.statusCode < 500 ? err.statusCode : 500;
