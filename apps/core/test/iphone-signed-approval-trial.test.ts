@@ -102,7 +102,10 @@ describe('actual Fastify signed-device trial (offline, NOT physical iPhone)',()=
     const legacy=await post(`/v1/tasks/${taskId}/actions/${actionId}/decision`,
       {action_id:actionId,decision:'APPROVE'},token);
     expect(legacy.statusCode).toBe(403);
+    expect(()=>core.agent.decide(taskId,actionId,'APPROVE')).toThrow('SENSITIVE_EXECUTION_DISABLED');
     const envlp=await preview(token,taskId,actionId);
+    const retryPreview=await preview(token,taskId,actionId);
+    expect(retryPreview).toEqual(envlp);
     expect(Buffer.from(approvalSignedText(envlp),'utf8')).toEqual(approvalBytes(envlp));
     expect(approvalCanonicalText(envlp)).toContain('archive/report.txt');
     const changed={...envlp,destination:'attacker/other-file.txt'};
@@ -118,6 +121,8 @@ describe('actual Fastify signed-device trial (offline, NOT physical iPhone)',()=
     const replay=await post('/v1/security/actions/'+envlp.actionId+'/approve',
       {signatureDerBase64:goodSig},token);
     expect(replay.statusCode).toBe(403);
+    const afterCompletion=await post(`/v1/tasks/${taskId}/actions/${actionId}/signed-preview`,{},token);
+    expect(afterCompletion.statusCode).toBe(403);
     expect(existsSync(join(env.wsRoot,'inbox/report.txt'))).toBe(true);
     expect(existsSync(join(env.wsRoot,'archive/report.txt'))).toBe(false);
   });
@@ -130,7 +135,8 @@ describe('actual Fastify signed-device trial (offline, NOT physical iPhone)',()=
     const deniedApproval=await post('/v1/security/actions/'+denied.actionId+'/approve',
       {signatureDerBase64:sig(approvalBytes(denied))},token);
     expect(deniedApproval.statusCode).toBe(403);
-    const expired=await preview(token,taskId,actionId);
+    const next=await pendingMove(token);
+    const expired=await preview(token,next.taskId,next.actionId);
     env.nowMs=expired.expiresAt;
     const expiredApproval=await post('/v1/security/actions/'+expired.actionId+'/approve',
       {signatureDerBase64:sig(approvalBytes(expired))},token);
