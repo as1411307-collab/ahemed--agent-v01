@@ -124,11 +124,15 @@ export function registerHermesBridge(p:Params):void {
     if (!validBridgeBearer(req.headers.authorization,options.proposalKey)) fail("HERMES_PLUGIN_AUTH");
   }
   function status(rec:Proposed):string {
-    const e=brokerStore.find(rec.action_id)?.envelope;
-    if (!e) return "UNKNOWN";
+    const broker=brokerStore.find(rec.action_id);
+    if (!broker) return "UNKNOWN";
     if (rec.decision === "REJECTED") return "REJECTED";
-    if (rec.decision === "DEMO_VERIFIED") return "DEMO_VERIFIED_NO_EFFECT";
-    return now() >= e.expiresAt ? "EXPIRED" : "AWAITING_OWNER";
+    // Broker reservation/result is durable before the UI projection is updated.
+    // If a process crashed between those writes, never show it as still pending.
+    if (broker.status === "COMPLETED" || rec.decision === "DEMO_VERIFIED")
+      return "DEMO_VERIFIED_NO_EFFECT";
+    if (broker.status !== "PENDING") return "UNKNOWN";
+    return now() >= broker.envelope.expiresAt ? "EXPIRED" : "AWAITING_OWNER";
   }
   function error(reply:{code:(n:number)=>{send:(v:unknown)=>unknown}},e:unknown):unknown {
     const msg=e instanceof Error?e.message:"BRIDGE_ERROR";
@@ -256,7 +260,8 @@ export function registerHermesBridge(p:Params):void {
   app.post<{Params:{actionId:string}}>("/v1/hermes/approvals/:actionId/reject",async(req,reply)=>{
     try {
       const who=deviceOwner(req),{record,envelope}=owned(req.params.actionId,who);
-      if(record.decision!==null||now()>=envelope.expiresAt)fail("PROPOSAL_NOT_PENDING");
+      if(record.decision!==null||now()>=envelope.expiresAt ||
+         brokerStore.find(record.action_id)?.status!=="PENDING")fail("PROPOSAL_NOT_PENDING");
       const changed=db.prepare("UPDATE hermes_action_proposals SET decision='REJECTED' WHERE action_id=? AND decision IS NULL")
         .run(record.action_id);
       if(changed.changes!==1)fail("PROPOSAL_ALREADY_DECIDED");
