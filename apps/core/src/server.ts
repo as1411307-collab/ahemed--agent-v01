@@ -62,6 +62,8 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
       task_id TEXT NOT NULL, owner_id TEXT NOT NULL, device_id TEXT NOT NULL,
       rejected_at INTEGER
     );
+    CREATE UNIQUE INDEX IF NOT EXISTS signed_preview_one_source
+      ON security_signed_previews(source_action_id);
   `);
   const workspace = new Workspace(opts.workspaceRoot);
   const agent = new Agent(store, workspace, opts.model, opts.approvalTtlMs ?? APPROVAL_TTL_MS, !deviceSecurity);
@@ -187,6 +189,17 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
         if (remaining <= 0) throw new Error("SECURITY_REJECT: SOURCE_EXPIRED");
         if (source.tool !== "move_file" || source.operation !== "move_file" || !source.destination)
           throw new Error("SECURITY_REJECT: UNSUPPORTED_ACTION");
+        // Retry of the preview request must return the SAME signed envelope,
+        // never mint a fresh approval after rejection, expiry or completion.
+        const existing=db.prepare("SELECT broker_action_id FROM security_signed_previews WHERE source_action_id=?")
+          .get(source.id) as {broker_action_id:string}|undefined;
+        if(existing){
+          const {row,envelope}=authorizedPreview(existing.broker_action_id,identity);
+          const record=brokerStore?.find(envelope.actionId);
+          if(!record ||record.status!=="PENDING" ||now()>=envelope.expiresAt)
+            throw new Error("SECURITY_REJECT: PREVIEW_NOT_PENDING");
+          return {mode:"DEMO_NO_EXECUTION",envelope,digest:actionDigest(envelope)};
+        }
         const args=JSON.parse(source.input) as Record<string,JsonValue>;
         const envelope=broker(identity.deviceId).issue({
           taskId,ownerId:identity.ownerId,deviceId:identity.deviceId,serviceId:"workspace",
