@@ -361,6 +361,17 @@ export function registerHermesBridge(p:Params):void{
        if(missionByRun(previous.run_id)?.state==="REVOKED")fail("RUN_REVOKED");
        return {mode:"DEMO_NO_EXECUTION",missionId:previous.mission_id,runId:previous.run_id,replayed:true};
      }
+     // A previous Hermes worker may have finished since the last status poll.
+     // Reconcile its authenticated terminal status before reserving the same
+     // conversation again. Never infer completion from a timeout or missing reply.
+     const preceding=missionBySession(b.conversationId);
+     if(preceding?.run_id){
+       try{
+         const status=await hermes("/v1/runs/"+encodeURIComponent(preceding.run_id),"GET");
+         if(status.run_id===preceding.run_id)
+           settleTerminalWorker(preceding.run_id,status.status);
+       }catch{ /* Unknown outcome: retain the existing unique session lease. */ }
+     }
      const missionId=randomUUID();
      db.transaction(()=>{
        devices.claimConversation(b.conversationId as string,who.ownerId);
