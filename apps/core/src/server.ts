@@ -49,6 +49,13 @@ export interface Core {
 }
 
 export async function createCore(opts: CoreOptions): Promise<Core> {
+  // Defense in depth: no alternate Core entrypoint may silently bypass the
+  // restricted production read-only mode or enable a demo bridge in production.
+  if (process.env.NODE_ENV === "production" &&
+     (process.env.CORE_PRODUCTION_TIER !== "COGNITIVE_READ_ONLY" ||
+      opts.strictCognitiveOnly !== true || !!opts.hermesBridge)) {
+    throw new Error("PRODUCTION_REQUIRES_STRICT_COGNITIVE_ONLY");
+  }
   // Keep legacy fixtures running in Vitest; no deployed entrypoint accepts APP_TOKEN.
   const oldTestFixture = !opts.deviceSecurity && process.env.NODE_ENV === "test" && !!opts.appToken;
   if (!opts.deviceSecurity && !oldTestFixture) throw new Error("SIGNED_DEVICE_SECURITY_REQUIRED");
@@ -143,7 +150,7 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
   // Never infer production readiness from a successful HTTP response or a demo signature.
   app.get("/v1/system/capabilities", async () => ({
     schemaVersion: 1,
-    mode: process.env.NODE_ENV === "production" && deviceSecurity
+    mode: opts.strictCognitiveOnly === true && deviceSecurity
       ? "COGNITIVE_READ_ONLY_NOT_ATTESTED"
       : deviceSecurity ? "SIGNED_DEVICE_DEMO_ONLY" : "TEST_FIXTURE_ONLY",
     features: {
