@@ -1,9 +1,46 @@
 import {randomUUID, randomBytes, createHash, verify as verifySignature} from 'node:crypto';
 import {canonicalize, type JsonValue} from './canonical.js';
 
+/** Snapshot recorded before any phone preview. Never reconstructed from the current registry. */
+export interface FrozenRegistrySpec {
+  readonly registryVersion: string;
+  readonly title: string;
+  readonly humanSummary: string;
+  readonly declaredSideEffects: readonly string[];
+  readonly riskLevel: 'L0' | 'L1' | 'L2' | 'L3';
+  readonly allowedKeys: readonly string[];
+  readonly workflowConfigDigest: string;
+  readonly registryTrust: 'DEMO_UNVERIFIED';
+}
+
+export interface LockedActionIntent {
+  readonly proposalId: string;
+  readonly missionId: string;
+  readonly runId: string;
+  readonly callId: string;
+  readonly ownerId: string;
+  readonly deviceId: string;
+  readonly effectIdempotencyKey: string;
+  readonly serviceId: string;
+  readonly operation: string;
+  readonly destination: string;
+  readonly arguments: Record<string, JsonValue>;
+  readonly frozenRegistrySpec: FrozenRegistrySpec;
+  readonly proposalCreatedAt: number;
+  readonly proposalDeadlineAt: number;
+}
+
+/** Stable over the proposal lifetime; distinct from a renewable signing preview. */
+export function computeIntentHash(intent: LockedActionIntent): string {
+  return createHash('sha256')
+    .update('AHMED-LOCKED-INTENT-V1\n' + canonicalize(intent), 'utf8').digest('hex');
+}
+
 export interface ApprovalContext {
   readonly source: 'hermes';
   readonly proposalId: string;
+  /** Stable commitment to the database-owned LockedActionIntent. */
+  readonly intentHash: string;
   readonly runId: string;
   readonly callId: string;
   // Registry data is resolved by Gateway, NEVER supplied by the model.
@@ -26,7 +63,7 @@ export interface ActionEnvelope {
   readonly idempotencyKey: string; readonly nonce: string;
   readonly policyVersion: string; readonly issuedAt: number; readonly expiresAt: number;
   readonly approvalContext?: ApprovalContext;
-  /** SHA256 of complete canonical signed intent EXCLUDING this field itself. */
+  /** Legacy name: SHA256 of ephemeral signing preview (including its expiry). */
   readonly canonicalPayloadHash?: string;
 }
 export type ActionState = 'PENDING' | 'EXECUTING' | 'UNKNOWN' | 'COMPLETED';
@@ -58,10 +95,14 @@ export function approvalBytes(envelope: ActionEnvelope): Buffer {
   return Buffer.from('AHMED-ACTION-APPROVAL-V1\n' + canonicalize(envelope), 'utf8');
 }
 export function canonicalPayloadHash(envelope: ActionEnvelope): string {
-  // No self-referential hash. Includes run/call IDs, arguments and expiration.
+  // Ephemeral preview hash: includes nonce, issuedAt, expiresAt and approvalContext.intentHash.
   const {canonicalPayloadHash: _ignored, ...intent} = envelope;
   return createHash('sha256')
     .update('AHMED-ACTION-INTENT-V1\n' + canonicalize(intent), 'utf8').digest('hex');
+}
+/** Clear name for the existing wire-compatible canonicalPayloadHash computation. */
+export function computeSigningEnvelopeHash(envelope: ActionEnvelope): string {
+  return canonicalPayloadHash(envelope);
 }
 export function actionDigest(envelope: ActionEnvelope): string {
   return createHash('sha256').update(approvalBytes(envelope)).digest('hex');
