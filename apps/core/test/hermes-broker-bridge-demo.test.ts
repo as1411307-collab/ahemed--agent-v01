@@ -58,7 +58,8 @@ async function launch(phoneToken:string){
  },phoneToken);
 }
 function proposal(callId="call_hermes_001"){
- return {runId,callId,serviceId:"n8n",operation:"trigger_workflow",
+ return {sessionId:"conversation_hermes_001",runId,callId,
+   serviceId:"n8n",operation:"trigger_workflow",
    destination:"workflow_demo_001",arguments:{text:"safe demonstration"}};
 }
 async function createProposal(callId?:string){
@@ -102,6 +103,12 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
    expect(hermesCalls[0].idempotency).toMatch(/^[0-9a-f]{64}$/);
    expect((await launch(token)).json().replayed).toBe(true);
    expect(hermesCalls).toHaveLength(1);
+   const otherRun=await post("/v1/hermes/runs",{
+     requestId:"req_other_hermes_start_02",conversationId:"conversation_hermes_001",
+     input:"A second run must not steal the same active session."
+   },token);
+   expect(otherRun.statusCode).not.toBe(202);
+   expect(hermesCalls).toHaveLength(1);
    const status=await get("/v1/hermes/runs/"+runId,token);
    expect(status.json()).toMatchObject({workerStatus:"running",authority:"GATEWAY_FOR_ACTIONS"});
    expect(status.json().approvalStatus).toBeUndefined();
@@ -122,7 +129,7 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
    expect(replay.json()).toMatchObject({actionId:proposalId,replayed:true,
      status:"PENDING_USER_SIGNATURE_ON_IPHONE",execution:"NONE"});
    expect((await post("/v1/hermes/bridge/actions",
-     {...proposal(),arguments:{text:"tampered"}},bridgeKey)).statusCode).toBe(403);
+     {...proposal("call_parallel_002")},bridgeKey)).statusCode).toBe(403);
    const items=(await get("/v1/hermes/approvals",token)).json().items;
    expect(items).toHaveLength(1);
    expect(items[0]).toMatchObject({actionId:proposalId,
@@ -133,11 +140,13 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
    expect(c.runId).toBe(runId);
    expect(c.callId).toBe("call_hermes_001");
    expect(c.proposalId).toBe(proposalId);
+   expect(c.intentHash).toMatch(/^[a-f0-9]{64}$/);
    expect(c.effectIdempotencyKey).toBe("nexus_"+proposalId);
    expect(c.registryTrust).toBe("DEMO_UNVERIFIED");
    expect(envlp.canonicalPayloadHash).toBe(canonicalPayloadHash(envlp));
    expect(Buffer.from(approvalSignedText(envlp),"utf8")).toEqual(approvalBytes(envlp));
    expect(approvalDisplayRows(envlp).map(x=>x.value).join(" ")).toContain("NOT LINKED TO n8n");
+   expect(approvalDisplayRows(envlp).map(x=>x.label)).toContain("بصمة النية الثابتة");
    const old=await post("/v1/hermes/approvals/"+proposalId+"/approve",{
      signatureDerBase64:sig(approvalBytes({...envlp,arguments:{text:"tampered"}}))
    },token);
@@ -176,6 +185,81 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
    expect((await get("/v1/hermes/approvals",token)).json().items).toHaveLength(0);
    expect(hermesCalls).toHaveLength(1); // No native Hermes /approval, n8n or email dispatch.
  });
+ it("atomically accepts one of two parallel sensitive proposals and replays the accepted call",async()=>{
+   const token=await phone();await launch(token);
+   const [a,b]=await Promise.all([
+     post("/v1/hermes/bridge/actions",proposal("call_parallel_0001"),bridgeKey),
+     post("/v1/hermes/bridge/actions",proposal("call_parallel_0002"),bridgeKey)
+   ]);
+   expect([a.statusCode,b.statusCode].sort()).toEqual([202,403]);
+   const winner=a.statusCode===202?a:b;
+   const callId=a.statusCode===202?"call_parallel_0001":"call_parallel_0002";
+   const proposalId=winner.json().proposalId as string;
+   const replay=await post("/v1/hermes/bridge/actions",proposal(callId),bridgeKey);
+   expect(replay.statusCode).toBe(202);
+   expect(replay.json()).toMatchObject({proposalId,replayed:true,status:"PENDING_USER_SIGNATURE_ON_IPHONE"});
+   const db=new Database(env.dbFile,{readonly:true});
+   try{
+     const state=db.prepare("SELECT state,proposals_count FROM mission_runs WHERE run_id=?")
+       .get(runId) as {state:string;proposals_count:number};
+     expect(state).toEqual({state:"AWAITING_SIGNATURE",proposals_count:1});
+     const count=db.prepare("SELECT COUNT(*) AS n FROM hermes_action_proposals WHERE run_id=?")
+       .get(runId) as {n:number};
+     expect(count.n).toBe(1);
+   }finally{db.close();}
+   expect((await get("/v1/hermes/approvals",token)).json().items).toHaveLength(1);
+ });
+ it("revokes the bound run on different arguments for the same call ID",async()=>{
+   const token=await phone();await launch(token);
+   const proposalId=await createProposal();
+   const modified=await post("/v1/hermes/bridge/actions",{
+     ...proposal(),arguments:{text:"changed instruction"}
+   },bridgeKey);
+   expect(modified.statusCode).toBe(403);
+   expect(modified.json().error.message).toContain("CALL_ID_INTENT_MISMATCH_RUN_REVOKED");
+   const db=new Database(env.dbFile,{readonly:true});
+   try{
+     expect((db.prepare("SELECT state FROM mission_runs WHERE run_id=?").get(runId)
+       as {state:string}).state).toBe("REVOKED");
+     const num=db.prepare("SELECT COUNT(*) AS n FROM hermes_action_proposals WHERE run_id=?")
+       .get(runId) as {n:number};
+     expect(num.n).toBe(1);
+   }finally{db.close();}
+   expect((await get("/v1/hermes/bridge/actions/"+proposalId,bridgeKey)).json().status)
+     .toBe("RUN_REVOKED");
+   expect((await post("/v1/hermes/approvals/"+proposalId+"/preview",{},token)).statusCode).toBe(403);
+ });
+ it("rejects an altered frozen registry snapshot even if its stored hash is recalculated",async()=>{
+   const token=await phone();await launch(token);
+   const proposalId=await createProposal();
+   const db=new Database(env.dbFile);
+   try{
+     const row=db.prepare("SELECT intent_json FROM hermes_action_proposals WHERE action_id=?")
+       .get(proposalId) as {intent_json:string};
+     const locked=JSON.parse(row.intent_json) as import("../src/security/action-broker.js").LockedActionIntent;
+     const forged={...locked,frozenRegistrySpec:{...locked.frozenRegistrySpec,
+       title:"Malicious changed meaning"}};
+     const {computeIntentHash}=await import("../src/security/action-broker.js");
+     const forgedHash=computeIntentHash(forged);
+     db.prepare("UPDATE hermes_action_proposals"+
+       " SET intent_json=?,intent_hash=?,payload_digest=? WHERE action_id=?")
+       .run(JSON.stringify(forged),forgedHash,forgedHash,proposalId);
+   }finally{db.close();}
+   expect((await get("/v1/hermes/bridge/actions/"+proposalId,bridgeKey)).json().status)
+     .toBe("REGISTRY_CHANGED");
+   expect((await get("/v1/hermes/approvals",token)).json().items).toHaveLength(0);
+   expect((await post("/v1/hermes/approvals/"+proposalId+"/preview",{},token)).statusCode).toBe(403);
+ });
+ it("quarantines pre-migration proposals with no immutable intent hash",async()=>{
+   const token=await phone();await launch(token);
+   const proposalId=await createProposal();
+   const db=new Database(env.dbFile);
+   try{db.prepare("UPDATE hermes_action_proposals SET intent_hash=NULL WHERE action_id=?")
+     .run(proposalId);}finally{db.close();}
+   expect((await get("/v1/hermes/bridge/actions/"+proposalId,bridgeKey)).json().status)
+     .toBe("LEGACY_QUARANTINED");
+   expect((await post("/v1/hermes/approvals/"+proposalId+"/preview",{},token)).statusCode).toBe(403);
+ });
  it("accepts signature after 30 minutes; regenerates a 90s review and rejects its old signature",async()=>{
    const token=await phone();await launch(token);
    const proposalId=await createProposal();
@@ -190,6 +274,8 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
    expect(second.actionId).not.toBe(first.actionId);
    expect(second.expiresAt).toBe(env.nowMs+90_000);
    expect(second.approvalContext?.effectIdempotencyKey).toBe(first.approvalContext?.effectIdempotencyKey);
+   expect(second.approvalContext?.intentHash).toBe(first.approvalContext?.intentHash);
+   expect(second.canonicalPayloadHash).not.toBe(first.canonicalPayloadHash);
    const stale=await post("/v1/hermes/approvals/"+proposalId+"/approve",{
      signatureDerBase64:sig(approvalBytes(first))
    },renewedToken);
