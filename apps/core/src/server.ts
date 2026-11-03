@@ -1,4 +1,8 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import {ActionBrokerEnforcer, actionDigest, approvalBytes, type ActionEnvelope} from "./security/action-broker.js";
+import {SqliteActionStore} from "./security/sqlite-action-store.js";
+import {DeviceSessions, type DeviceIdentity} from "./security/device-session.js";
+import {canonicalize, type JsonValue} from "./security/canonical.js";
 import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import multipart from "@fastify/multipart";
@@ -21,7 +25,9 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export interface CoreOptions {
   dbFile: string;
   workspaceRoot: string;
-  appToken: string;
+  /** Used only by historical unit tests. Never supplied by main.ts. */
+  appToken?: string;
+  deviceSecurity?: { ownerId: string; pairingCode: string | null };
   model: ModelClient;
   clock?: Clock;
   approvalTtlMs?: number;
@@ -39,9 +45,24 @@ export interface Core {
 }
 
 export async function createCore(opts: CoreOptions): Promise<Core> {
-  if (!opts.appToken) throw new Error("APP_TOKEN is required");
+  // Keep legacy fixtures running in Vitest; no deployed entrypoint accepts APP_TOKEN.
+  const oldTestFixture = !opts.deviceSecurity && process.env.NODE_ENV === "test" && !!opts.appToken;
+  if (!opts.deviceSecurity && !oldTestFixture) throw new Error("SIGNED_DEVICE_SECURITY_REQUIRED");
   const db = openDb(opts.dbFile);
   const store = new Store(db, opts.clock ?? (() => new Date()));
+  const now = () => (opts.clock ? opts.clock().getTime() : Date.now());
+  const deviceSecurity = opts.deviceSecurity
+    ? new DeviceSessions(db, opts.deviceSecurity.ownerId, opts.deviceSecurity.pairingCode, now)
+    : null;
+  const brokerStore = deviceSecurity ? new SqliteActionStore(db) : null;
+  brokerStore?.quarantineInterrupted();
+  if (brokerStore) db.exec(`
+    CREATE TABLE IF NOT EXISTS security_signed_previews (
+      broker_action_id TEXT PRIMARY KEY, source_action_id TEXT NOT NULL,
+      task_id TEXT NOT NULL, owner_id TEXT NOT NULL, device_id TEXT NOT NULL,
+      rejected_at INTEGER
+    );
+  `);
   const workspace = new Workspace(opts.workspaceRoot);
   const agent = new Agent(store, workspace, opts.model, opts.approvalTtlMs ?? APPROVAL_TTL_MS);
   agent.recover();
@@ -50,14 +71,62 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 1024 * 1024 });
   await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 5 } });
 
-  // ---- auth: every request needs the app token ----
-  const expected = sha256(`Bearer ${opts.appToken}`);
+  // Only four proof/registration endpoints are public. Every other route requires
+  // a device-bound short-lived random session, independently of client input.
+  const requestIdentity = new WeakMap<object, DeviceIdentity>();
+  const expectedFixture = sha256(`Bearer ${opts.appToken ?? ""}`);
+  const publicSecurityRoutes = new Set([
+    "/v1/security/enroll/challenge", "/v1/security/enroll",
+    "/v1/security/session/challenge", "/v1/security/session",
+  ]);
   app.addHook("onRequest", async (req, reply) => {
-    const given = sha256(req.headers.authorization ?? "");
-    if (!timingSafeEqual(given, expected)) {
-      return reply.code(401).send(errorResponse("UNAUTHORIZED", "Missing or invalid app token."));
-    }
+    if (deviceSecurity && req.method === "POST" && publicSecurityRoutes.has(req.url.split("?")[0])) return;
+    if (deviceSecurity) {
+      const identity = deviceSecurity.authenticate(req.headers.authorization);
+      if (identity) { requestIdentity.set(req, identity); return; }
+    } else if (oldTestFixture &&
+      timingSafeEqual(sha256(req.headers.authorization ?? ""), expectedFixture)) return;
+    return reply.code(401).send(errorResponse("UNAUTHORIZED", "Signed device session required."));
   });
+  function owner(req: object): DeviceIdentity {
+    const identity = requestIdentity.get(req);
+    if (!identity) throw new Error("SECURITY_REJECT: NO_DEVICE_SESSION");
+    return identity;
+  }
+  function securityFailure(reply: {code: (status: number) => {send: (value: unknown) => unknown}}, e: unknown): unknown {
+    const message = e instanceof Error ? e.message : "SECURITY_REJECT";
+    // Do not include source envelopes, secrets or user input in error responses.
+    const code = message.startsWith("SECURITY_REJECT:") || message.startsWith("EXECUTION_HALTED:")
+      ? 403 : message.startsWith("OUTCOME_UNKNOWN:") ? 409 : 400;
+    return reply.code(code).send({error:{code:message.split(":")[0],message:message.slice(0,120)}});
+  }
+  function broker(deviceId: string): ActionBrokerEnforcer {
+    if (!deviceSecurity || !brokerStore) throw new Error("SECURITY_REJECT: DISABLED");
+    const device = deviceSecurity.getDevice(deviceId);
+    if (!device) throw new Error("SECURITY_REJECT: DEVICE_NOT_ENROLLED");
+    return new ActionBrokerEnforcer(brokerStore,new Map([[deviceId,device]]),
+      // Deliberate no-op dispatcher. The signed approval proves the plumbing,
+      // never executes a move or touches an external integration.
+      {dispatch: async (e) => ({confirmedReceipt:"DEMO_ONLY_NO_EFFECT:" + actionDigest(e)})},
+      (e) => e.serviceId === "workspace" && e.operation === "move_file",
+      now);
+  }
+  type Preview = {broker_action_id:string;source_action_id:string;task_id:string;
+    owner_id:string;device_id:string;rejected_at:number|null};
+  function previewRow(id: string): Preview | undefined {
+    if (!deviceSecurity) return undefined;
+    return db.prepare("SELECT * FROM security_signed_previews WHERE broker_action_id=?").get(id) as Preview|undefined;
+  }
+  function authorizedPreview(id: string, identity: DeviceIdentity): {row:Preview; envelope:ActionEnvelope} {
+    const row=previewRow(id);
+    if (!row || row.owner_id !== identity.ownerId || row.device_id !== identity.deviceId ||
+       !deviceSecurity?.ownsTask(row.task_id,identity.ownerId)) throw new Error("SECURITY_REJECT: PREVIEW_NOT_OWNED");
+    if (row.rejected_at !== null) throw new Error("SECURITY_REJECT: PREVIEW_REJECTED");
+    const record=brokerStore?.find(id);
+    if (!record || record.envelope.ownerId !== identity.ownerId || record.envelope.deviceId !== identity.deviceId ||
+        record.envelope.taskId !== row.task_id) throw new Error("SECURITY_REJECT: PREVIEW_MISMATCH");
+    return {row,envelope:record.envelope};
+  }
 
   app.setNotFoundHandler((_req, reply) => reply.code(404).send(errorResponse("NOT_FOUND", "Route not found.")));
   app.setErrorHandler((err: { statusCode?: number; message: string }, req, reply) => {
@@ -68,6 +137,108 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
       .code(status)
       .send(errorResponse(status === 500 ? "INTERNAL" : "BAD_REQUEST", status === 500 ? "Internal error." : err.message));
   });
+
+
+  // ---- device enrollment and short-lived signed authentication ----
+  if (deviceSecurity) {
+    app.post("/v1/security/enroll/challenge", async (req, reply) => {
+      try {
+        const body=req.body as {pairingCode?:unknown;deviceId?:unknown;publicKeySpkiPem?:unknown}|null;
+        return {payload:deviceSecurity.enrollmentChallenge({
+          pairingCode:body?.pairingCode,deviceId:body?.deviceId,publicKeySpkiPem:body?.publicKeySpkiPem,
+        })};
+      } catch (e) {return securityFailure(reply,e);}
+    });
+    app.post("/v1/security/enroll", async (req,reply) => {
+      try {
+        const b=req.body as {challengeId?:unknown;deviceId?:unknown;signatureDerBase64?:unknown}|null;
+        return deviceSecurity.enroll({challengeId:b?.challengeId,deviceId:b?.deviceId,signatureDerBase64:b?.signatureDerBase64});
+      } catch(e){return securityFailure(reply,e);}
+    });
+    app.post("/v1/security/session/challenge", async (req,reply) => {
+      try {return {payload:deviceSecurity.sessionChallenge((req.body as {deviceId?:unknown}|null)?.deviceId)};}
+      catch(e){return securityFailure(reply,e);}
+    });
+    app.post("/v1/security/session", async(req,reply)=>{
+      try {
+        const b=req.body as {challengeId?:unknown;deviceId?:unknown;signatureDerBase64?:unknown}|null;
+        return deviceSecurity.openSession({challengeId:b?.challengeId,deviceId:b?.deviceId,signatureDerBase64:b?.signatureDerBase64});
+      }catch(e){return securityFailure(reply,e);}
+    });
+    app.get("/v1/security/device",async(req)=>({device:owner(req)}));
+    app.post("/v1/security/device/revoke",async(req,reply)=>{
+      try {deviceSecurity.revoke(owner(req));return {revoked:true};}
+      catch(e){return securityFailure(reply,e);}
+    });
+
+    // The preview is generated server-side from a real, owner-scoped pending
+    // action. No client-provided tool name, destination or arguments are trusted.
+    app.post<{Params:{taskId:string;actionId:string}}>(
+      "/v1/tasks/:taskId/actions/:actionId/signed-preview",async(req,reply)=>{
+      try {
+        const identity=owner(req);
+        const {taskId,actionId}=req.params;
+        if (!deviceSecurity.ownsTask(taskId,identity.ownerId)) throw new Error("SECURITY_REJECT: TASK_NOT_OWNED");
+        const source=store.getAction(actionId);
+        const task=store.getTask(taskId);
+        if (!source || source.task_id !== taskId || source.decision !== null ||
+           task?.status !== "WAITING_FOR_APPROVAL") throw new Error("SECURITY_REJECT: NOT_PENDING");
+        const remaining=Date.parse(source.expires_at)-now();
+        if (remaining <= 0) throw new Error("SECURITY_REJECT: SOURCE_EXPIRED");
+        if (source.tool !== "move_file" || source.operation !== "move_file" || !source.destination)
+          throw new Error("SECURITY_REJECT: UNSUPPORTED_ACTION");
+        const args=JSON.parse(source.input) as Record<string,JsonValue>;
+        const envelope=broker(identity.deviceId).issue({
+          taskId,ownerId:identity.ownerId,deviceId:identity.deviceId,serviceId:"workspace",
+          operation:"move_file",destination:source.destination,arguments:args,
+          policyVersion:"demo-review-only-v1",ttlMs:Math.min(90_000,remaining),
+        });
+        db.prepare(`INSERT INTO security_signed_previews
+          (broker_action_id,source_action_id,task_id,owner_id,device_id)
+          VALUES(?,?,?,?,?)`).run(envelope.actionId,source.id,taskId,identity.ownerId,identity.deviceId);
+        store.audit("SIGNED_PREVIEW_ISSUED",{taskId,actionId:source.id},{brokerActionId:envelope.actionId,mode:"DEMO_ONLY"});
+        return {mode:"DEMO_NO_EXECUTION",envelope,digest:actionDigest(envelope)};
+      }catch(e){return securityFailure(reply,e);}
+    });
+    app.get<{Params:{actionId:string}}>("/v1/security/actions/:actionId",async(req,reply)=>{
+      try {
+        const {row,envelope}=authorizedPreview(req.params.actionId,owner(req));
+        const state=brokerStore!.find(envelope.actionId)!.status;
+        return {mode:"DEMO_NO_EXECUTION",envelope,digest:actionDigest(envelope),status:state,sourceActionId:row.source_action_id};
+      }catch(e){return securityFailure(reply,e);}
+    });
+    app.post<{Params:{actionId:string}}>("/v1/security/actions/:actionId/reject",async(req,reply)=>{
+      try {
+        const identity=owner(req);
+        authorizedPreview(req.params.actionId,identity);
+        const changed=db.prepare(`UPDATE security_signed_previews SET rejected_at=?
+          WHERE broker_action_id=? AND rejected_at IS NULL`).run(now(),req.params.actionId);
+        if (changed.changes!==1) throw new Error("SECURITY_REJECT: ALREADY_REJECTED");
+        return {status:"DEMO_REJECTED_NO_EXECUTION"};
+      }catch(e){return securityFailure(reply,e);}
+    });
+    app.post<{Params:{actionId:string}}>("/v1/security/actions/:actionId/approve",async(req,reply)=>{
+      try {
+        const identity=owner(req);
+        const {row,envelope}=authorizedPreview(req.params.actionId,identity);
+        const source=store.getAction(row.source_action_id);
+        const task=store.getTask(row.task_id);
+        if(!source ||source.decision!==null || task?.status!=="WAITING_FOR_APPROVAL" ||
+           Date.parse(source.expires_at)<=now() ||
+           source.destination !== envelope.destination || source.operation !== envelope.operation ||
+           canonicalize(JSON.parse(source.input)) !== canonicalize(envelope.arguments))
+          throw new Error("SECURITY_REJECT: SOURCE_CHANGED_OR_EXPIRED");
+        const signatureDerBase64=(req.body as {signatureDerBase64?:unknown}|null)?.signatureDerBase64;
+        if(typeof signatureDerBase64!=="string") throw new Error("SECURITY_REJECT: SIGNATURE_REQUIRED");
+        const outcome=await broker(identity.deviceId).executeOrReject({
+          actionId:envelope.actionId,deviceId:identity.deviceId,signatureDerBase64,
+        });
+        store.audit("SIGNED_PREVIEW_VERIFIED",{taskId:row.task_id,actionId:row.source_action_id},
+          {brokerActionId:envelope.actionId,mode:"DEMO_NO_EXECUTION",digest:actionDigest(envelope)});
+        return {status:"DEMO_SIGNED_NO_EXECUTION",digest:actionDigest(envelope),receipt:outcome.receipt};
+      }catch(e){return securityFailure(reply,e);}
+    });
+  }
 
   // ---- POST /v1/messages ----
   app.post("/v1/messages", async (req, reply) => {
@@ -98,6 +269,8 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     const parsed = parseRequest(payloadRaw);
     if (typeof parsed === "string") return reject(400, parsed);
     const request = parsed;
+    if (deviceSecurity && !deviceSecurity.canReadConversation(request.conversation_id,owner(req).ownerId))
+      return reject(403,"Conversation is not owned by the active device.");
     if (request.input_type === "file" && !upload) {
       return reject(400, "input_type 'file' requires a 'file' part.", request.request_id);
     }
@@ -105,6 +278,8 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     // Safe retry: the same request_id never creates a second task.
     const existing = store.getTaskByRequestId(request.request_id);
     if (existing) {
+      if (deviceSecurity && !deviceSecurity.ownsTask(existing.id,owner(req).ownerId))
+        return reply.code(403).send(errorResponse("UNAUTHORIZED","Task is not owned by this device."));
       if (existing.conversation_id !== request.conversation_id) {
         return reply.code(409).send(errorResponse("CONFLICT", "request_id already used in another conversation."));
       }
@@ -126,6 +301,7 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     }
 
     const task = store.tx(() => {
+      if (deviceSecurity) deviceSecurity.claimConversation(request.conversation_id,owner(req).ownerId);
       store.ensureConversation(request.conversation_id);
       const t = store.createTask({
         conversationId: request.conversation_id,
@@ -153,6 +329,8 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
   app.get<{ Params: { taskId: string } }>("/v1/tasks/:taskId", async (req, reply) => {
     agent.expireStale();
     const task = store.getTask(req.params.taskId);
+    if (deviceSecurity && (!task || !deviceSecurity.ownsTask(task.id,owner(req).ownerId)))
+      return reply.code(404).send(errorResponse("NOT_FOUND","Task not found."));
     if (!task) return reply.code(404).send(errorResponse("NOT_FOUND", "Task not found."));
     return taskResponse(store, task);
   });
@@ -162,7 +340,13 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     "/v1/tasks/:taskId/actions/:actionId/decision",
     async (req, reply) => {
       const { taskId, actionId } = req.params;
+      if (deviceSecurity && !deviceSecurity.ownsTask(taskId,owner(req).ownerId))
+        return reply.code(404).send(errorResponse("NOT_FOUND","Task not found."));
       const body = req.body as Partial<ApprovalDecision> | undefined;
+      // Hard stop: ALL legacy APPROVE calls are prohibited for signed devices.
+      // Only the separate dry-run broker route can verify a signature.
+      if (deviceSecurity && body?.decision === "APPROVE")
+        return reply.code(403).send(errorResponse("UNAUTHORIZED","Unsigned approval disabled. No action executed."));
       if (!body || body.action_id !== actionId || (body.decision !== "APPROVE" && body.decision !== "REJECT")) {
         return reply
           .code(400)
@@ -189,7 +373,9 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
   );
 
   // ---- GET /v1/conversations/:conversationId ----
-  app.get<{ Params: { conversationId: string } }>("/v1/conversations/:conversationId", async (req) => {
+  app.get<{ Params: { conversationId: string } }>("/v1/conversations/:conversationId", async (req, reply) => {
+    if (deviceSecurity && !deviceSecurity.canReadConversation(req.params.conversationId,owner(req).ownerId))
+      return reply.code(404).send(errorResponse("NOT_FOUND","Conversation not found."));
     agent.expireStale();
     return conversationResponse(store, req.params.conversationId);
   });
