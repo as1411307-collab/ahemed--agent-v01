@@ -12,6 +12,7 @@
 - In the strict cognitive tier, the model can only request reads of uploaded attachments belonging to the same conversation up to that task; arbitrary workspace reads and write tools are denied. User-provided text and allowed attachment contents can still leave the host for Anthropic.
 - The iPhone now obtains an authenticated capability declaration, refreshes it while active, and no longer offers a blocked Hermes run button. A successful capability response is NOT proof of model execution or external effects.
 - Core environment template escaped newline literals were repaired on this branch.
+- Duplicate request IDs with different text, file metadata, or file bytes are now rejected instead of silently returning a previous task. Normal repeated bytes still return the stored task.
 
 ## Remaining P0/P1 gaps: NOT fixed by the branch
 
