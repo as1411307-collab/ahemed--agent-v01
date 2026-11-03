@@ -44,5 +44,5 @@ export function approvalCanonicalText(e:DisplayEnvelope):string{
   return canonicalize(e);
 }
 export function approvalSignedText(e:DisplayEnvelope):string{
-  return 'AHMED-ACTION-APPROVAL-V1\\n'+approvalCanonicalText(e);
+  return 'AHMED-ACTION-APPROVAL-V1\n'+approvalCanonicalText(e);
 }
