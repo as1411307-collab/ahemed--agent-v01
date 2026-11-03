@@ -72,6 +72,7 @@ const core = await createCore({
   deviceSecurity: {ownerId,pairingCode},
   hermesBridge,
   model: new AnthropicModelClient(apiKey, modelName),
+  strictCognitiveOnly: process.env.NODE_ENV === "production",
   logger: true,
 });
 
