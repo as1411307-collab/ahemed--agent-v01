@@ -263,6 +263,11 @@ export function registerHermesBridge(p:Params):void{
    if(row.decision==="DEMO_VERIFIED")return "DEMO_VERIFIED_NO_EFFECT";
    if(curr&&(curr.state==="EXECUTING"||curr.state==="UNKNOWN"))return "OUTCOME_UNKNOWN";
    if(now()>=row.deadline_at)return "EXPIRED";
+   try{
+     const locked=readIntent(row);
+     if(canonicalize(freezeRegistry(locked))!==
+        canonicalize(locked.frozenRegistrySpec))return "REGISTRY_CHANGED";
+   }catch{return "REGISTRY_CHANGED";}
    return "PENDING_USER_SIGNATURE_ON_IPHONE";
  }
  function error(reply:{code:(n:number)=>{send:(v:unknown)=>unknown}},e:unknown):unknown{
@@ -434,11 +439,12 @@ export function registerHermesBridge(p:Params):void{
        " AND decision IS NULL ORDER BY rowid").all(who.ownerId,who.deviceId) as Proposed[];
      const items=rows.flatMap(r=>{
        if(proposalStatus(r)!=="PENDING_USER_SIGNATURE_ON_IPHONE")return [];
-       const x=readIntent(r),workflow=registry(x);
+       const locked=readIntent(r),workflow=locked.frozenRegistrySpec;
        return [{actionId:r.action_id,proposalId:r.action_id,runId:r.run_id,
-         mode:"DEMO_NO_EXECUTION",deadlineAt:r.deadline_at,displayName:workflow.displayName,
-         description:workflow.description,declaredEffects:workflow.declaredEffects,
-         destination:x.destination,operation:x.operation}];
+         mode:"DEMO_NO_EXECUTION",deadlineAt:r.deadline_at,intentHash:r.intent_hash,
+         displayName:workflow.title,description:workflow.humanSummary,
+         declaredEffects:workflow.declaredSideEffects,
+         destination:locked.destination,operation:locked.operation}];
      });
      return {items};
    }catch(e){return error(reply,e);}
@@ -452,21 +458,23 @@ export function registerHermesBridge(p:Params):void{
        return {mode:"DEMO_NO_EXECUTION",proposalId:row.action_id,
          envelope:prev.envelope,canonicalPayloadHash:prev.envelope.canonicalPayloadHash,
          digest:actionDigest(prev.envelope),deadlineAt:row.deadline_at,reused:true};
-     const x=readIntent(row),entry=registry(x);
+     const locked=readIntent(row),entry=locked.frozenRegistrySpec;
      const launch=launchByRun(row.run_id);
-     if(!launch||!row.deadline_at)fail("UNREGISTERED_RUN");
+     if(!launch||!row.deadline_at||!row.intent_hash)fail("UNREGISTERED_RUN");
      const context:ApprovalContext={
-       source:"hermes",proposalId:row.action_id,runId:row.run_id,callId:row.call_id,
-       registryVersion:REGISTRY_VERSION,registryTrust:"DEMO_UNVERIFIED",
-       workflowDisplayName:entry.displayName,workflowDescription:entry.description,
-       declaredEffects:[...entry.declaredEffects],
-       workflowConfigDigest:"UNVERIFIED_NO_REMOTE_N8N_CONFIGURATION",
-       effectIdempotencyKey:"nexus_"+row.action_id,proposalDeadlineAt:row.deadline_at
+       source:"hermes",proposalId:row.action_id,intentHash:row.intent_hash,
+       runId:row.run_id,callId:row.call_id,
+       registryVersion:entry.registryVersion,registryTrust:entry.registryTrust,
+       workflowDisplayName:entry.title,workflowDescription:entry.humanSummary,
+       declaredEffects:[...entry.declaredSideEffects],
+       workflowConfigDigest:entry.workflowConfigDigest,
+       effectIdempotencyKey:locked.effectIdempotencyKey,proposalDeadlineAt:row.deadline_at
      };
      const envelope=db.transaction(()=>{
        const issued=enforcer(row.device_id).issue({
          taskId:launch.mission_id,ownerId:row.owner_id,deviceId:row.device_id,
-         serviceId:x.serviceId,operation:x.operation,destination:x.destination,arguments:x.arguments,
+         serviceId:locked.serviceId,operation:locked.operation,
+         destination:locked.destination,arguments:locked.arguments,
          policyVersion:"hermes-demo-no-effect-v2",
          ttlMs:Math.min(SIGNATURE_TTL_MS,row.deadline_at!-now()),approvalContext:context
        });
@@ -475,7 +483,8 @@ export function registerHermesBridge(p:Params):void{
        return issued;
      })();
      store.audit("HERMES_APPROVAL_PREVIEW",{taskId:launch.mission_id,actionId:row.action_id},
-       {envelopeActionId:envelope.actionId,canonicalPayloadHash:envelope.canonicalPayloadHash,mode:"DEMO_ONLY"});
+       {envelopeActionId:envelope.actionId,intentHash:row.intent_hash,
+         signingEnvelopeHash:envelope.canonicalPayloadHash,mode:"DEMO_ONLY"});
      return reply.code(201).send({mode:"DEMO_NO_EXECUTION",proposalId:row.action_id,
        envelope,canonicalPayloadHash:envelope.canonicalPayloadHash,
        digest:actionDigest(envelope),deadlineAt:row.deadline_at,reused:false});
