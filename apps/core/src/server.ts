@@ -332,10 +332,10 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     }
 
     // Exact-once task creation is NOT permission to reuse an id for new input.
-    if (request.input_type === "text" && upload)
-      return reject(400, "Text requests must not include an uploaded file.", request.request_id);
-    if (request.input_type === "file" && !upload)
-      return reject(400, "File requests must contain the file bytes.", request.request_id);
+    if (request.input_type === "text" && (upload || request.attachments.length !== 0))
+      return reject(400, "Text requests must not include file data or metadata.", request.request_id);
+    if (request.input_type === "file" && (!upload || request.attachments.length !== 1))
+      return reject(400, "File requests require exactly one uploaded file and metadata entry.", request.request_id);
     const existing = store.getTaskByRequestId(request.request_id);
     if (existing) {
       if (deviceSecurity && !deviceSecurity.ownsTask(existing.id,owner(req).ownerId))
@@ -352,6 +352,7 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
         const currentName = (typeof request.attachments[0]?.name === "string" &&
           request.attachments[0].name.trim()) || upload.filename || "upload";
         if (old.workspace_path && old.name === currentName &&
+            old.mime_type === (upload.mimetype || request.attachments[0]?.mime_type) &&
             old.size_bytes === upload.buffer.length) {
           try {
             const onDisk = readFileSync(workspace.resolve(old.workspace_path));
