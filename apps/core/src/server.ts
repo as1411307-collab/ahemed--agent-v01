@@ -140,11 +140,16 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
   // Never infer production readiness from a successful HTTP response or a demo signature.
   app.get("/v1/system/capabilities", async () => ({
     schemaVersion: 1,
-    mode: deviceSecurity ? "SIGNED_DEVICE_DEMO_ONLY" : "TEST_FIXTURE_ONLY",
+    mode: process.env.NODE_ENV === "production" && deviceSecurity
+      ? "COGNITIVE_READ_ONLY_NOT_ATTESTED"
+      : deviceSecurity ? "SIGNED_DEVICE_DEMO_ONLY" : "TEST_FIXTURE_ONLY",
     features: {
-      textMessages: "MODEL_BACKED",
+      textMessages: "MODEL_ADAPTER_CONFIGURED_NOT_PROVEN",
       fileUploadAndRead: "WORKSPACE_SCOPED",
       modelInputMayLeaveServer: true,
+      canonicalMissionLedger: "LEGACY_TASKS",
+      hermesMissionLedger: "SEPARATE_DEMO_NOT_AUTHORITATIVE",
+      approvalUserPresence: "NOT_ENFORCED",
       sensitiveWorkspaceActions: deviceSecurity ? "BLOCKED" : "TEST_FIXTURE_ONLY",
       signedApprovalEffects: "DEMO_NO_EFFECT",
       hermesRuns: opts.hermesBridge?.transport ? "INJECTED_TRANSPORT_DEMO_ONLY" : "LIVE_RUN_START_BLOCKED",
