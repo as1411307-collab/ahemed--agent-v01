@@ -2,7 +2,7 @@ import {canonicalize} from "../../../core/src/security/canonical";
 // The iOS client intentionally does not import Node-only broker types:
 // its wire contract is structurally matched by the Core integration tests.
 interface ApprovalContext {
-  source:'hermes';proposalId:string;runId:string;callId:string;
+  source:'hermes';proposalId:string;intentHash:string;runId:string;callId:string;
   registryVersion:string;workflowDisplayName:string;workflowDescription:string;
   declaredEffects:readonly string[];workflowConfigDigest:string;
   effectIdempotencyKey:string;proposalDeadlineAt:number;
@@ -36,10 +36,11 @@ export function assertDisplayEnvelope(v:unknown): asserts v is DisplayEnvelope {
     const c=o.approvalContext as Record<string,unknown>|null;
     if(!c || typeof c!=='object' || Array.isArray(c) ||
        JSON.stringify(Object.keys(c).sort())!==JSON.stringify([
-         'source','proposalId','runId','callId','registryVersion','workflowDisplayName',
+         'source','proposalId','intentHash','runId','callId','registryVersion','workflowDisplayName',
          'workflowDescription','declaredEffects','workflowConfigDigest',
          'effectIdempotencyKey','proposalDeadlineAt','registryTrust'].sort()) ||
        c.source!=='hermes'||c.registryTrust!=='DEMO_UNVERIFIED' ||
+       typeof c.intentHash!=='string'||!/^[a-f0-9]{64}$/.test(c.intentHash) ||
        !Array.isArray(c.declaredEffects)||c.declaredEffects.length<1||c.declaredEffects.length>8)
       throw new Error('APPROVAL_INVALID_CONTEXT');
     for(const key of ['proposalId','runId','callId','registryVersion','workflowDisplayName',
@@ -77,7 +78,8 @@ export function approvalDisplayRows(e:DisplayEnvelope):{label:string;value:strin
       {label:'معرّف التنفيذ الموحد',value:e.approvalContext.effectIdempotencyKey},
       {label:'إصدار سجل التعريف',value:e.approvalContext.registryVersion},
       {label:'بصمة إعداد Workflow',value:e.approvalContext.workflowConfigDigest},
-      {label:'بصمة طلب الموافقة',value:e.canonicalPayloadHash ?? ''},
+      {label:'بصمة النية الثابتة',value:e.approvalContext.intentHash},
+      {label:'بصمة نافذة التوقيع المتجددة',value:e.canonicalPayloadHash ?? ''},
     ] : []),
     {label:'الخدمة',value:e.serviceId},
     {label:'الأمر',value:e.operation},
