@@ -2,7 +2,8 @@ import {createHash,randomUUID,timingSafeEqual} from "node:crypto";
 import type Database from "better-sqlite3";
 import type {FastifyInstance,FastifyRequest} from "fastify";
 import {
-  ActionBrokerEnforcer,actionDigest,type ActionEnvelope,type ApprovalContext
+  ActionBrokerEnforcer,actionDigest,computeIntentHash,
+  type ActionEnvelope,type ApprovalContext,type FrozenRegistrySpec,type LockedActionIntent
 } from "./security/action-broker.js";
 import type {SqliteActionStore} from "./security/sqlite-action-store.js";
 import {canonicalize,type JsonValue} from "./security/canonical.js";
@@ -30,10 +31,13 @@ interface Params {
 type Launch={mission_id:string;run_id:string|null;owner_id:string;device_id:string;
   conversation_id:string;request_id:string;input_digest:string;created_at:number};
 type Proposed={action_id:string;run_id:string;call_id:string;owner_id:string;
-  device_id:string;payload_digest:string;decision:string|null;
+  device_id:string;payload_digest:string;intent_hash:string|null;decision:string|null;
   intent_json:string|null;deadline_at:number|null;created_at:number|null};
+type MissionRun={mission_id:string;session_id:string;run_id:string|null;
+  state:"STARTING"|"ACTIVE"|"AWAITING_SIGNATURE"|"COMPLETED"|"REVOKED";
+  proposals_count:number;max_proposals:number;created_at:number};
 type Preview={proposal_id:string;broker_action_id:string;created_at:number};
-type Proposal={runId:string;callId:string;serviceId:string;
+type Proposal={sessionId:string;runId?:string;callId:string;serviceId:string;
   operation:string;destination:string;arguments:Record<string,JsonValue>};
 const PROPOSAL_TTL_MS=2*60*60*1000;
 const SIGNATURE_TTL_MS=90_000;
@@ -85,34 +89,48 @@ function registry(p:Pick<Proposal,"serviceId"|"operation"|"destination"|"argumen
    fail("WORKFLOW_ARGUMENT_SCHEMA_DENIED");
  return entry;
 }
-function canonicalProposal(p:Proposal):string{
- return canonicalize({runId:p.runId,callId:p.callId,serviceId:p.serviceId,
-   operation:p.operation,destination:p.destination,arguments:p.arguments,
-   registryVersion:REGISTRY_VERSION});
+function freezeRegistry(p:Pick<Proposal,"serviceId"|"operation"|"destination"|"arguments">):FrozenRegistrySpec{
+ const entry=registry(p);
+ // This is a local no-effect demonstration definition, NOT a verified n8n Cloud digest.
+ return {
+   registryVersion:REGISTRY_VERSION,title:entry.displayName,
+   humanSummary:entry.description,declaredSideEffects:[...entry.declaredEffects],
+   riskLevel:"L0",allowedKeys:[...entry.allowedKeys],
+   workflowConfigDigest:"UNVERIFIED_NO_REMOTE_N8N_CONFIGURATION",
+   registryTrust:"DEMO_UNVERIFIED"
+ };
 }
 function parseProposal(v:unknown):Proposal{
  if(!v||typeof v!=="object"||Array.isArray(v))fail("INVALID_PROPOSAL");
  const x=v as Record<string,unknown>;
- if(JSON.stringify(Object.keys(x).sort())!==JSON.stringify(
-   ["runId","callId","serviceId","operation","destination","arguments"].sort()))
-   fail("INVALID_PROPOSAL_FIELDS");
- if(!runId(x.runId)||!id(x.callId)||typeof x.serviceId!=="string"||
+ const fields=Object.keys(x).sort();
+ const required=["sessionId","callId","serviceId","operation","destination","arguments"].sort();
+ const withRun=[...required,"runId"].sort();
+ if(JSON.stringify(fields)!==JSON.stringify(required)&&
+    JSON.stringify(fields)!==JSON.stringify(withRun))fail("INVALID_PROPOSAL_FIELDS");
+ if(!id(x.sessionId)||(x.runId!==undefined&&!runId(x.runId))||
+    !id(x.callId)||typeof x.serviceId!=="string"||
     typeof x.operation!=="string"||typeof x.destination!=="string"||
     !x.arguments||typeof x.arguments!=="object"||Array.isArray(x.arguments))
    fail("INVALID_PROPOSAL");
  const canonical=canonicalize(x.arguments);
  if(Buffer.byteLength(canonical,"utf8")>16_384)fail("PROPOSAL_TOO_LARGE");
- const result={runId:x.runId,callId:x.callId,serviceId:x.serviceId,
-   operation:x.operation,destination:x.destination,
+ return {sessionId:x.sessionId,...(x.runId?{runId:x.runId}:{}),
+   callId:x.callId,serviceId:x.serviceId,operation:x.operation,destination:x.destination,
    arguments:JSON.parse(canonical) as Record<string,JsonValue>};
- registry(result);return result;
 }
-function readIntent(row:Proposed):Proposal{
- if(!row.intent_json||!row.deadline_at)fail("LEGACY_PROPOSAL_QUARANTINED");
- const p=JSON.parse(row.intent_json) as Proposal;
- if(sha("NEXUS-PROPOSAL-V2\n"+canonicalProposal(p))!==row.payload_digest||
-    p.runId!==row.run_id||p.callId!==row.call_id)fail("PROPOSAL_TAMPERED");
- registry(p);return p;
+function readIntent(row:Proposed):LockedActionIntent{
+ // Do not retrofit legacy V2 rows with a fabricated/unstable registry snapshot.
+ if(!row.intent_json||!row.deadline_at||!row.intent_hash)fail("LEGACY_PROPOSAL_QUARANTINED");
+ const intent=JSON.parse(row.intent_json) as LockedActionIntent;
+ if(computeIntentHash(intent)!==row.intent_hash||row.payload_digest!==row.intent_hash||
+    intent.proposalId!==row.action_id||intent.runId!==row.run_id||
+    intent.callId!==row.call_id||intent.ownerId!==row.owner_id||
+    intent.deviceId!==row.device_id||intent.proposalDeadlineAt!==row.deadline_at||
+    intent.proposalCreatedAt!==row.created_at||
+    intent.effectIdempotencyKey!=="nexus_"+row.action_id)
+   fail("PROPOSAL_TAMPERED");
+ return intent;
 }
 export function registerHermesBridge(p:Params):void{
  const {app,db,store,devices,brokerStore,deviceOwner,options,now}=p;
@@ -124,11 +142,20 @@ export function registerHermesBridge(p:Params):void{
    "mission_id TEXT PRIMARY KEY,run_id TEXT UNIQUE,owner_id TEXT NOT NULL,device_id TEXT NOT NULL,"+
    "conversation_id TEXT NOT NULL,request_id TEXT UNIQUE NOT NULL,input_digest TEXT NOT NULL,"+
    "created_at INTEGER NOT NULL);"+
+   "CREATE TABLE IF NOT EXISTS mission_runs("+
+   "mission_id TEXT PRIMARY KEY REFERENCES hermes_launches(mission_id),"+
+   "session_id TEXT NOT NULL,run_id TEXT UNIQUE,"+
+   "state TEXT NOT NULL CHECK(state IN ('STARTING','ACTIVE','AWAITING_SIGNATURE','COMPLETED','REVOKED')),"+
+   "proposals_count INTEGER NOT NULL DEFAULT 0 CHECK(proposals_count>=0),"+
+   "max_proposals INTEGER NOT NULL DEFAULT 3 CHECK(max_proposals BETWEEN 1 AND 10),"+
+   "created_at INTEGER NOT NULL);"+
+   "CREATE UNIQUE INDEX IF NOT EXISTS idx_single_active_run_per_session "+
+     "ON mission_runs(session_id) WHERE state IN ('STARTING','ACTIVE','AWAITING_SIGNATURE');"+
    "CREATE TABLE IF NOT EXISTS hermes_action_proposals("+
    "action_id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES hermes_launches(run_id),"+
    "call_id TEXT NOT NULL,owner_id TEXT NOT NULL,device_id TEXT NOT NULL,"+
    "payload_digest TEXT NOT NULL,decision TEXT CHECK(decision IN ('REJECTED','DEMO_VERIFIED')),"+
-   "intent_json TEXT,deadline_at INTEGER,created_at INTEGER,"+
+   "intent_hash TEXT,intent_json TEXT,deadline_at INTEGER,created_at INTEGER,"+
    "UNIQUE(run_id,call_id));"+
    "CREATE TABLE IF NOT EXISTS hermes_proposal_previews("+
    "proposal_id TEXT NOT NULL REFERENCES hermes_action_proposals(action_id),"+
@@ -142,11 +169,16 @@ export function registerHermesBridge(p:Params):void{
  // Existing PR #9 demo data has no trustworthy immutable intent or deadline.
  // Preserve but quarantine these old records instead of guessing new authority.
  const fields=(db.pragma("table_info(hermes_action_proposals)") as {name:string}[]).map(f=>f.name);
- for(const col of ["intent_json TEXT","deadline_at INTEGER","created_at INTEGER"]){
+ for(const col of ["intent_hash TEXT","intent_json TEXT","deadline_at INTEGER","created_at INTEGER"]){
    if(!fields.includes(col.split(" ")[0]))db.exec("ALTER TABLE hermes_action_proposals ADD COLUMN "+col);
  }
  const launchByRun=(id:string):Launch|undefined=>
    db.prepare("SELECT * FROM hermes_launches WHERE run_id=?").get(id) as Launch|undefined;
+ const missionBySession=(sessionId:string):MissionRun|undefined=>
+   db.prepare("SELECT * FROM mission_runs WHERE session_id=?"+
+     " AND state IN ('STARTING','ACTIVE','AWAITING_SIGNATURE')").get(sessionId) as MissionRun|undefined;
+ const missionByRun=(runIdValue:string):MissionRun|undefined=>
+   db.prepare("SELECT * FROM mission_runs WHERE run_id=?").get(runIdValue) as MissionRun|undefined;
  const proposed=(id:string):Proposed|undefined=>
    db.prepare("SELECT * FROM hermes_action_proposals WHERE action_id=?").get(id) as Proposed|undefined;
  const latest=(id:string):Preview|undefined=>
