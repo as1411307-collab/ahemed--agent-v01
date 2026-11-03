@@ -174,6 +174,9 @@ export function registerHermesBridge(p:Params):void {
       const b=req.body as {requestId?:unknown;conversationId?:unknown;input?:unknown}|null;
       if(!validId(b?.requestId)||!validId(b?.conversationId)||
          typeof b?.input!=="string"||b.input.trim().length<1||b.input.length>4_000)fail("INVALID_RUN_REQUEST");
+      // Check before reserving mission IDs: a blocked demo must not create
+      // an unrecoverable "unknown start" row.
+      if(!options.transport)fail("LIVE_HERMES_RUN_START_BLOCKED_UNTIL_SANDBOX_VERIFIED");
       const digest=createHash("sha256").update(b.input).digest("hex");
       const existing=db.prepare("SELECT * FROM hermes_launches WHERE request_id=?").get(b.requestId) as Launch|undefined;
       if (existing) {
