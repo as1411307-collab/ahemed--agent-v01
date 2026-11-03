@@ -40,6 +40,7 @@ export class Agent {
     private readonly model: ModelClient,
     private readonly approvalTtlMs: number = APPROVAL_TTL_MS,
     private readonly allowSensitiveExecution: boolean = true,
+    private readonly strictCognitiveOnly: boolean = false,
   ) {}
 
   // ================= processing a new message =================
@@ -67,7 +68,7 @@ export class Agent {
       m => m.task_id === task.id && m.role === "user",
     );
     const allowedReadPaths = new Set<string>();
-    if (!this.allowSensitiveExecution && taskMessageIndex >= 0) {
+    if (this.strictCognitiveOnly && taskMessageIndex >= 0) {
       for (const m of historyRows.slice(0, taskMessageIndex + 1)) {
         if (m.role !== "user") continue;
         const attachments = JSON.parse(m.attachments) as Attachment[];
@@ -82,7 +83,7 @@ export class Agent {
     // The signed-device deployment is read-only. Never even advertise write tools
     // to the model; a forged tool call is rejected again below.
     const tools = Object.values(TOOL_REGISTRY)
-      .filter((t) => this.allowSensitiveExecution || t.risk === "read")
+      .filter((t) => !this.strictCognitiveOnly || t.risk === "read")
       .map((t) => ({
       name: t.name,
       description: t.description,
@@ -91,7 +92,7 @@ export class Agent {
     let usedTool: string | null = null;
 
     for (let step = 0; step < MAX_MODEL_STEPS; step++) {
-      const readOnlyInstruction = this.allowSensitiveExecution ? "" :
+      const readOnlyInstruction = !this.strictCognitiveOnly ? "" :
         "\n\nRUNTIME POLICY: read-only mode. The move_file tool is unavailable. " +
         "Never request, suggest completion of, or claim execution of any write action.";
       const turn = await this.model.complete({
@@ -112,7 +113,7 @@ export class Agent {
         try {
           if (!spec) throw new ToolError("TOOL_ERROR", `Unknown tool "${call.name}".`);
           if (spec.risk === "write") {
-            if (!this.allowSensitiveExecution) {
+            if (this.strictCognitiveOnly) {
               this.fail(task.id, "TOOL_ERROR", "Sensitive actions are disabled in this Core.");
               return;
             }
@@ -121,7 +122,7 @@ export class Agent {
             this.requestApproval(task, spec.name, plan, turn.text);
             return;
           }
-          if (!this.allowSensitiveExecution) {
+          if (this.strictCognitiveOnly) {
             const requested = (call.input as {path?: unknown} | null)?.path;
             if (typeof requested !== "string" ||
               !allowedReadPaths.has(this.ws.relative(this.ws.resolve(requested)))) {
