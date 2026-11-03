@@ -31,18 +31,19 @@ function required(name: string): string {
   return v;
 }
 
-const appToken = required("APP_TOKEN");
+const ownerId = required("CORE_OWNER_ID");
+const pairingCode = process.env.CORE_PAIRING_CODE?.trim() || null;
 const apiKey = required("ANTHROPIC_API_KEY");
 const modelName = required("MODEL_NAME");
 const port = Number(process.env.PORT ?? 8787);
-const host = process.env.HOST ?? "0.0.0.0";
+const host = process.env.HOST ?? "127.0.0.1"; // Serve iPhone through a TLS reverse proxy.
 const workspaceRoot = path.resolve(process.env.WORKSPACE_ROOT ?? "./workspace");
 const dbFile = path.resolve(process.env.DB_FILE ?? "./ahmed-core.db");
 
 const core = await createCore({
   dbFile,
   workspaceRoot,
-  appToken,
+  deviceSecurity: {ownerId,pairingCode},
   model: new AnthropicModelClient(apiKey, modelName),
   logger: true,
 });
