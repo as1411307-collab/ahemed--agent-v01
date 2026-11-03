@@ -143,6 +143,11 @@ export function registerHermesBridge(p:Params):void {
     const ctrl=new AbortController();
     const timer=setTimeout(()=>ctrl.abort(),9000);
     try {
+      // A live Hermes Runs API can execute its native terminal/MCP/browser
+      // tools without our Broker. Offline tests inject a mocked transport.
+      // Until an isolated read-only Hermes profile is verified, fail closed.
+      if(method==="POST" && path==="/v1/runs" && !options.transport)
+        fail("LIVE_HERMES_RUN_START_BLOCKED_UNTIL_SANDBOX_VERIFIED");
       const response=await transport(base+path,{
         method,redirect:"error",signal:ctrl.signal,
         headers:{"Authorization":"Bearer "+options.apiKey,"Content-Type":"application/json",
