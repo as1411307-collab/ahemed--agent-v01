@@ -3,23 +3,41 @@ import path from "node:path";
 import { AnthropicModelClient } from "./model.js";
 import { createCore } from "./server.js";
 import type {HermesBridgeOptions} from "./hermes-bridge.js";
-import { auditCredentialBoundaries } from "./security/credential-audit.js";
+import { assessCapabilityTier, auditCredentialBoundaries } from "./security/credential-audit.js";
 
 // Secrets come from the environment only. A local .env (git-ignored) is loaded if present.
 const envFile = path.resolve(".env");
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 
-// Production is intentionally fail-closed until the static bearer is replaced,
-// real device enrollment is deployed and remote n8n credentials are verified.
-// Do not bypass this gate by setting a cosmetic "approved" flag.
+// Fail closed for production external actions. n8n being unverified does NOT
+// automatically block strictly read-only model-backed conversations.
+// This permits a bounded entrypoint, not a production security certification.
 if (process.env.NODE_ENV === "production") {
   const repoRoot = path.resolve(import.meta.dirname, "../../..");
   const security = auditCredentialBoundaries(repoRoot, process.env);
-  if (!security.passedLocalChecks || !security.remoteN8nVerified) {
-    console.error("SECURITY_GATE_BLOCKED: production start denied. See docs/SECURITY_GATES_PHASE1.md.");
-    console.error(JSON.stringify({findings: security.findings, limitations: security.limitations}));
+  const requestedTier = process.env.CORE_PRODUCTION_TIER === "COGNITIVE_READ_ONLY"
+    ? "COGNITIVE_READ_ONLY" : "EXTERNAL_ACTUATION";
+  const decision = assessCapabilityTier(security, requestedTier);
+  const host = (process.env.HOST ?? "127.0.0.1").trim();
+  // An operator-managed private HTTPS reverse proxy is required for phone access.
+  const localOnly = host === "127.0.0.1" || host === "::1" || host === "localhost";
+  // The Hermes bridge still has a shared proposal key, not a proven worker
+  // identity. Its presence must block this restricted production entrypoint.
+  const noHermesBridge = ![
+    process.env.HERMES_API_URL, process.env.HERMES_API_SERVER_KEY,
+    process.env.HERMES_PROPOSAL_KEY,
+  ].some(value => !!value?.trim());
+  if (!decision.allowedToStart || !localOnly || !noHermesBridge) {
+    console.error("SECURITY_GATE_BLOCKED: restricted production start denied.");
+    console.error(JSON.stringify({
+      tier: requestedTier, reason: decision.reason,
+      localOnly, noHermesBridge,
+      findings: security.findings, limitations: security.limitations,
+    }));
     process.exit(78);
   }
+  console.warn("COGNITIVE_READ_ONLY: model requests may leave this host; external effects are blocked.");
+  console.warn("NOT ATTESTED: no live provider, HTTPS proxy, iPhone, or privacy test has been performed.");
 }
 
 
