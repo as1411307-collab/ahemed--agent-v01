@@ -64,13 +64,40 @@ the live Hermes-to-NEXUS peer identity channel remains unimplemented.
 ## Runtime restriction template (not installed automatically)
 
 `config/hermes-nexus-demo.yaml` switches **Tool Search OFF** and declares a
-restricted `api_server` toolset along with `agent.disabled_toolsets` for
-`delegation` (subagents), code, shell, file writes, browser, cron and GUI tools.
-`experimental/hermes_plugins/nexus-proposal-guard/` is an independent
-loadable Hermes plugin with an always-blocking sensitive proposal Hook and
-inert handler. **This is a fail-closed stub, NOT a connected Gateway Plugin.**
-Hermes API live starts remain blocked until the effective running toolset,
-OS/container permissions and authenticated local peer channel are verified.
+restricted `api_server` toolset (`web`, `memory`, `nexus-proposal`), plus
+`agent.disabled_toolsets` for `delegation` (subagents), code, shell,
+file writes, browser, cron and GUI tools. **Do not put `hermes-api-server`,
+`hermes-cli` or `coding` in the disabled list**: Hermes subtracts the
+overlapping core tools, inadvertently stripping permitted search/memory.
+
+The independent `experimental/hermes_plugins/nexus-proposal-guard/` Plugin
+now runs a **fail-closed runtime self-assertion** during `register()` and
+before *each* `pre_tool_call`. It reads Hermes' active config and
+`_get_platform_tools(..., "api_server")`, the resolved
+`get_tool_definitions(...)` names, and Tool Search's actual enabled mode.
+It requires the exact three explicit toolsets, guard-plugin opt-in,
+dangerous disabled lists, `tool_search=off`, an inert proposal handler and
+NO extra active tool names. If any inspection errors or drifts, it returns
+`{"action":"block","message":"UNSAFE_HERMES_RUNTIME_CONFIG:..."}`,
+even for nominal read-only tools.
+
+**Limits of self-assertion:** A disabled/unloaded Plugin cannot run its own
+hook; another plugin or runtime that bypasses hooks cannot be governed by this
+assertion. A modified agent's per-run tool list may differ from an independent
+`get_tool_definitions` check; only a trusted supervisor/Gateway can attest the
+actual worker after launch. A Unix socket with same-UID peer checks or a
+long-lived shared environment key alone cannot establish strong process
+identity on macOS. Production requires an isolated OS account/container plus
+a verified process/channel identity and a Gateway-owned fail-closed launch
+policy. No claim of a live attested Plugin handshake is made in this PR.
+
+The handler is deliberately inert: **this is NOT a connected Gateway Plugin**.
+Hermes API live starts remain blocked until actual worker tooling,
+OS/container restrictions and a trusted local peer channel are verified.
+
+CI adds `scripts/test_hermes_runtime_guard.py` (YAML policy drift tests)
+and `scripts/probe_hermes_runtime_guard_upstream.py` (pinned official
+Hermes Plugin and tool-discovery integration; no model calls).
 
 ## Previous V2 digest (obsolete, shown only for comparison)
 
