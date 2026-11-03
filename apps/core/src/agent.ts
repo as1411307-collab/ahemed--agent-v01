@@ -74,8 +74,13 @@ export class Agent {
         const attachments = JSON.parse(m.attachments) as Attachment[];
         for (const attachment of attachments) {
           if (typeof attachment.workspace_path === "string") {
-            const filePath = this.ws.resolve(attachment.workspace_path);
-            allowedReadPaths.add(this.ws.relative(filePath));
+            try {
+              const filePath = this.ws.resolve(attachment.workspace_path);
+              allowedReadPaths.add(this.ws.relative(filePath));
+            } catch {
+              // Old/moved/unsafe attachments are ineligible for reads,
+              // but must not break unrelated text-only requests.
+            }
           }
         }
       }
