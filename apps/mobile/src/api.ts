@@ -129,3 +129,32 @@ export function rejectSignedPreview(actionId:string):Promise<{status:'DEMO_REJEC
     method:'POST',headers:{'Content-Type':'application/json'},body:'{}',
   });
 }
+
+
+/** Hermes v1 pilot: separate worker run and signed action inbox, never executes n8n/email. */
+export interface HermesPendingApproval {
+  actionId:string;runId:string;mode:'DEMO_NO_EXECUTION';
+  envelope:DisplayEnvelope;digest:string;
+}
+export function listHermesApprovals():Promise<{items:HermesPendingApproval[]}>{
+  return call("/v1/hermes/approvals");
+}
+export function startHermesRun(input:{
+  requestId:string;conversationId:string;input:string
+}):Promise<{mode:'DEMO_NO_EXECUTION';missionId:string;runId:string;replayed:boolean}>{
+  return call("/v1/hermes/runs",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(input)});
+}
+export function submitHermesDemoApproval(actionId:string,signatureDerBase64:string):
+  Promise<{status:'DEMO_VERIFIED_NO_EFFECT';execution:'NONE';receipt:string}>{
+  return call("/v1/hermes/approvals/"+encodeURIComponent(actionId)+"/approve",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({signatureDerBase64}),
+  });
+}
+export function rejectHermesDemoApproval(actionId:string):
+  Promise<{status:'REJECTED';execution:'NONE'}>{
+  return call("/v1/hermes/approvals/"+encodeURIComponent(actionId)+"/reject",{
+    method:"POST",headers:{"Content-Type":"application/json"},body:"{}",
+  });
+}
