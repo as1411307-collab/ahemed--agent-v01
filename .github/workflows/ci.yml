@@ -25,7 +25,7 @@ jobs:
   xcode-simulator-compile:
     # Experimental branch only. This is unsigned simulator compilation, NOT
     # Apple Developer provisioning or real Secure Enclave phone verification.
-    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'security/iphone-signed-approval-trial-2026-11-03' }}
+    if: ${{ github.event_name == 'pull_request' && (github.head_ref == 'security/iphone-signed-approval-trial-2026-11-03' || github.head_ref == 'feature/hermes-broker-bridge-demo-2026-11-03') }}
     runs-on: macos-latest
     timeout-minutes: 30
     env:
