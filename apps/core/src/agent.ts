@@ -59,7 +59,11 @@ export class Agent {
 
   private async runModelLoop(task: TaskRow): Promise<void> {
     const messages = this.history(task);
-    const tools = Object.values(TOOL_REGISTRY).map((t) => ({
+    // The signed-device deployment is read-only. Never even advertise write tools
+    // to the model; a forged tool call is rejected again below.
+    const tools = Object.values(TOOL_REGISTRY)
+      .filter((t) => this.allowSensitiveExecution || t.risk === "read")
+      .map((t) => ({
       name: t.name,
       description: t.description,
       input_schema: t.inputSchema,
@@ -67,7 +71,12 @@ export class Agent {
     let usedTool: string | null = null;
 
     for (let step = 0; step < MAX_MODEL_STEPS; step++) {
-      const turn = await this.model.complete({ system: SYSTEM_PROMPT, messages, tools });
+      const readOnlyInstruction = this.allowSensitiveExecution ? "" :
+        "\n\nRUNTIME POLICY: read-only mode. The move_file tool is unavailable. " +
+        "Never request, suggest completion of, or claim execution of any write action.";
+      const turn = await this.model.complete({
+        system: SYSTEM_PROMPT + readOnlyInstruction, messages, tools,
+      });
       this.store.audit("MODEL_RESPONDED", { taskId: task.id }, { tool_calls: turn.toolCalls.map((c) => c.name) });
 
       if (turn.toolCalls.length === 0) {
@@ -83,6 +92,10 @@ export class Agent {
         try {
           if (!spec) throw new ToolError("TOOL_ERROR", `Unknown tool "${call.name}".`);
           if (spec.risk === "write") {
+            if (!this.allowSensitiveExecution) {
+              this.fail(task.id, "TOOL_ERROR", "Sensitive actions are disabled in this Core.");
+              return;
+            }
             // The registry says this changes something: never run it here, ask Ahmed first.
             const plan = planMove(this.ws, call.input);
             this.requestApproval(task, spec.name, plan, turn.text);
