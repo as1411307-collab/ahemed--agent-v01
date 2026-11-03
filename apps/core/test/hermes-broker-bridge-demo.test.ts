@@ -40,6 +40,17 @@ async function phone():Promise<string>{
  expect(session.statusCode).toBe(200);
  return session.json().accessToken as string;
 }
+async function renewedSession():Promise<string>{
+ const response=await post("/v1/security/session/challenge",{deviceId});
+ expect(response.statusCode).toBe(200);
+ const p=response.json().payload as DeviceChallenge;
+ const auth=await post("/v1/security/session",{
+   deviceId,challengeId:p.challengeId,
+   signatureDerBase64:sig(deviceChallengeBytes("session",p))
+ });
+ expect(auth.statusCode).toBe(200);
+ return auth.json().accessToken as string;
+}
 async function launch(phoneToken:string){
  return post("/v1/hermes/runs",{
    requestId:"req_hermes_start_001",conversationId:"conversation_hermes_001",
@@ -160,22 +171,23 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
    const token=await phone();await launch(token);
    const proposalId=await createProposal();
    env.nowMs+=30*60_000;
+   const renewedToken=await renewedSession();
    const status=await get("/v1/hermes/bridge/actions/"+proposalId,bridgeKey);
    expect(status.json().status).toBe("PENDING_USER_SIGNATURE_ON_IPHONE");
-   const first=await preview(token,proposalId);
+   const first=await preview(renewedToken,proposalId);
    expect(first.expiresAt-env.nowMs).toBe(90_000);
    env.nowMs+=120_000;
-   const second=await preview(token,proposalId);
+   const second=await preview(renewedToken,proposalId);
    expect(second.actionId).not.toBe(first.actionId);
    expect(second.expiresAt).toBe(env.nowMs+90_000);
    expect(second.approvalContext?.effectIdempotencyKey).toBe(first.approvalContext?.effectIdempotencyKey);
    const stale=await post("/v1/hermes/approvals/"+proposalId+"/approve",{
      signatureDerBase64:sig(approvalBytes(first))
-   },token);
+   },renewedToken);
    expect(stale.statusCode).toBe(403);
    const good=await post("/v1/hermes/approvals/"+proposalId+"/approve",{
      signatureDerBase64:sig(approvalBytes(second))
-   },token);
+   },renewedToken);
    expect(good.statusCode).toBe(200);
    expect((await get("/v1/hermes/bridge/actions/"+proposalId,bridgeKey)).json().status)
      .toBe("DEMO_VERIFIED_NO_EFFECT");
@@ -184,16 +196,18 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
    const token=await phone();await launch(token);
    const prop=await createProposal();
    env.nowMs+=60*60_000;
+   const renewedToken=await renewedSession();
    expect((await get("/v1/hermes/bridge/actions/"+prop,bridgeKey)).json().status)
      .toBe("PENDING_USER_SIGNATURE_ON_IPHONE");
-   const envlp=await preview(token,prop);
+   const envlp=await preview(renewedToken,prop);
    expect(envlp.approvalContext?.proposalDeadlineAt).toBeGreaterThan(env.nowMs);
    env.nowMs+=61*60_000;
+   const endToken=await renewedSession();
    expect((await get("/v1/hermes/bridge/actions/"+prop,bridgeKey)).json().status).toBe("EXPIRED");
-   expect((await post("/v1/hermes/approvals/"+prop+"/preview",{},token)).statusCode).toBe(403);
+   expect((await post("/v1/hermes/approvals/"+prop+"/preview",{},endToken)).statusCode).toBe(403);
    expect((await post("/v1/hermes/approvals/"+prop+"/approve",{
      signatureDerBase64:sig(approvalBytes(envlp))
-   },token)).statusCode).toBe(403);
+   },endToken)).statusCode).toBe(403);
  });
  it("quarantines an uncertain broker state and never refreshes/replays it",async()=>{
    const token=await phone();await launch(token);
