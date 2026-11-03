@@ -54,6 +54,8 @@ export class DeviceSessions {
   ) {
     if (!validId(ownerId)) throw new Error('CORE_OWNER_ID must be 8-100 ASCII identifier characters');
     if (pairingCode && pairingCode.length < 24) throw new Error('CORE_PAIRING_CODE must have 24+ unpredictable characters');
+    if (pairingCode && /^(?:REPLACE[_-]?WITH|CHANGE[_-]?ME|YOUR[_-]?)/i.test(pairingCode))
+      throw new Error('CORE_PAIRING_CODE must be freshly random, never an example placeholder');
     db.exec(`
       CREATE TABLE IF NOT EXISTS security_devices (
         device_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, public_key_pem TEXT NOT NULL,
