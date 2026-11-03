@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -25,7 +26,11 @@ import {
   type ResultData,
   type TaskStatus,
 } from "@ahmed/contract";
-import { ApiError, CORE_URL, decide, getConversation, getTask, newId, sendMessage, type PickedFile } from "./src/api";
+import {ApiError, CORE_URL, decide, getConversation, getTask, newId, sendMessage,
+ requestSignedPreview, submitSignedPreview, rejectSignedPreview, type PickedFile} from "./src/api";
+import {ApprovalReview} from "./src/security/ApprovalReview";
+import type {DisplayEnvelope} from "./src/security/approval-display";
+import {enrollDevice,hasPairedDevice,revokeOwnDevice} from "./src/security/device-client";
 
 const C = {
   bg: "#000000",
@@ -40,7 +45,7 @@ const C = {
   ok: "#46A758",
 };
 
-const STORAGE_KEY = "ahmed.conversation_id";
+const STORAGE_KEY = "ahmed.signed.conversation_id.v1";
 const POLL_MS = 2000;
 
 const isRunning = (s: TaskStatus | null) => !!s && !FINAL_STATUSES.includes(s) && s !== "WAITING_FOR_APPROVAL";
@@ -85,6 +90,11 @@ export default function App() {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [showTasks, setShowTasks] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [needsPairing,setNeedsPairing] = useState(false);
+  const [pairingCode,setPairingCode] = useState("");
+  const [pairingBusy,setPairingBusy] = useState(false);
+  const [pairingError,setPairingError] = useState<string|null>(null);
+  const [activeReview,setActiveReview] = useState<DisplayEnvelope|null>(null);
   const listRef = useRef<FlatList<ConversationMessage>>(null);
 
   // ---- restore conversation id and state from the Core ----
@@ -101,6 +111,9 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
+      if(!await hasPairedDevice()){
+        setNeedsPairing(true);setLoading(false);return;
+      }
       let id = await AsyncStorage.getItem(STORAGE_KEY).catch(() => null);
       if (!id) {
         id = newId();
