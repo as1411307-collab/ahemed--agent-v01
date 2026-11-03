@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -107,7 +108,10 @@ export default function App() {
   const refreshCoreCapabilities = useCallback(async () => {
     try {
       const result = await getCoreCapabilities();
-      setCoreCapabilities(result.schemaVersion === 1 ? result : null);
+      const valid = result?.schemaVersion === 1 &&
+        typeof result.features?.signedApprovalEffects === "string" &&
+        typeof result.features?.hermesRuns === "string";
+      setCoreCapabilities(valid ? result : null);
     } catch {
       setCoreCapabilities(null);
     }
@@ -119,6 +123,7 @@ export default function App() {
       setConv(await getConversation(id));
       setError(null);
     } catch (e) {
+      setCoreCapabilities(null);
       setError({ text: errorText(e), retry: () => void load(id) });
     } finally {
       setLoading(false);
@@ -156,6 +161,24 @@ export default function App() {
   const taskById = useMemo(() => new Map(tasks.map((t) => [t.task_id, t])), [tasks]);
   const running = tasks.filter((t) => isRunning(t.response.status));
   const approvals = tasks.filter((t) => t.response.response_type === "APPROVAL_REQUEST");
+
+  // Network status is provisional. Recheck while active, including after foregrounding.
+  useEffect(() => {
+    if (!conversationId || needsPairing) {
+      setCoreCapabilities(null);
+      return;
+    }
+    void refreshCoreCapabilities();
+    const timer = setInterval(() => void refreshCoreCapabilities(), 30_000);
+    const listener = AppState.addEventListener("change", state => {
+      if (state === "active") void refreshCoreCapabilities();
+      else setCoreCapabilities(null);
+    });
+    return () => {
+      clearInterval(timer);
+      listener.remove();
+    };
+  }, [conversationId, needsPairing, refreshCoreCapabilities]);
 
   // Hermes and the existing Core are distinct workers; the phone displays
   // only Gateway-owned approval envelopes, never native Hermes tool prompts.
