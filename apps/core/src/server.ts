@@ -31,6 +31,8 @@ export interface CoreOptions {
   deviceSecurity?: { ownerId: string; pairingCode: string | null };
   hermesBridge?: HermesBridgeOptions;
   model: ModelClient;
+  /** Dedicated tool restrictions for the explicitly selected production read-only tier. */
+  strictCognitiveOnly?: boolean;
   clock?: Clock;
   approvalTtlMs?: number;
   logger?: boolean;
@@ -68,7 +70,8 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
       ON security_signed_previews(source_action_id);
   `);
   const workspace = new Workspace(opts.workspaceRoot);
-  const agent = new Agent(store, workspace, opts.model, opts.approvalTtlMs ?? APPROVAL_TTL_MS, !deviceSecurity);
+  const agent = new Agent(store, workspace, opts.model, opts.approvalTtlMs ?? APPROVAL_TTL_MS,
+    !deviceSecurity, opts.strictCognitiveOnly === true);
   agent.recover();
 
   const inFlight = new Set<Promise<void>>();
