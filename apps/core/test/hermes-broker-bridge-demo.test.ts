@@ -16,6 +16,7 @@ const keys=generateKeyPairSync("ec",{namedCurve:"prime256v1"});
 const pem=keys.publicKey.export({type:"spki",format:"pem"}).toString();
 let core:Core,env:Env;
 let hermesCalls:{url:string;method:string;idempotency:string|null}[];
+let mockRunStatus:Map<string,string>,mockRunCount:number;
 function sig(bytes:Buffer):string{return sign("sha256",bytes,keys.privateKey).toString("base64");}
 async function post(url:string,payload:unknown,token?:string){
  return core.app.inject({method:"POST",url,headers:{"content-type":"application/json",
@@ -73,15 +74,19 @@ async function preview(token:string,proposalId:string){
  return res.json().envelope as ActionEnvelope;
 }
 beforeEach(async()=>{
- env=makeEnv();hermesCalls=[];
+ env=makeEnv();hermesCalls=[];mockRunStatus=new Map();mockRunCount=0;
  const fakeTransport=async(input:RequestInfo|URL,init?:RequestInit):Promise<Response>=>{
    const url=String(input),h=new Headers(init?.headers);
    hermesCalls.push({url,method:init?.method??"GET",idempotency:h.get("Idempotency-Key")});
-   if(url.endsWith("/v1/runs")&&init?.method==="POST")
-     return new Response(JSON.stringify({run_id:runId,status:"started"}),{
+   if(url.endsWith("/v1/runs")&&init?.method==="POST"){
+     const created=mockRunCount++===0?runId:"run_hermes_demo_"+String(mockRunCount).padStart(4,"0");
+     mockRunStatus.set(created,"running");
+     return new Response(JSON.stringify({run_id:created,status:"started"}),{
        status:202,headers:{"content-type":"application/json"}});
-   if(url.endsWith("/v1/runs/"+runId))
-     return new Response(JSON.stringify({run_id:runId,status:"running"}),{
+   }
+   const statusId=/\/v1\/runs\/(run_[a-zA-Z0-9_]+)$/.exec(url)?.[1];
+   if(statusId)
+     return new Response(JSON.stringify({run_id:statusId,status:mockRunStatus.get(statusId)??"unknown"}),{
        status:200,headers:{"content-type":"application/json"}});
    return new Response("{}",{status:404});
  };
@@ -102,13 +107,13 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
    expect(hermesCalls[0].url).toBe("http://127.0.0.1:8642/v1/runs");
    expect(hermesCalls[0].idempotency).toMatch(/^[0-9a-f]{64}$/);
    expect((await launch(token)).json().replayed).toBe(true);
-   expect(hermesCalls).toHaveLength(1);
+   expect(hermesCalls.filter(x=>x.method==="POST")).toHaveLength(1);
    const otherRun=await post("/v1/hermes/runs",{
      requestId:"req_other_hermes_start_02",conversationId:"conversation_hermes_001",
      input:"A second run must not steal the same active session."
    },token);
    expect(otherRun.statusCode).not.toBe(202);
-   expect(hermesCalls).toHaveLength(1);
+   expect(hermesCalls.filter(x=>x.method==="POST")).toHaveLength(1);
    const status=await get("/v1/hermes/runs/"+runId,token);
    expect(status.json()).toMatchObject({workerStatus:"running",authority:"GATEWAY_FOR_ACTIONS"});
    expect(status.json().approvalStatus).toBeUndefined();
@@ -183,7 +188,80 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
      signatureDerBase64:sig(approvalBytes(envlp))
    },token)).statusCode).toBe(403);
    expect((await get("/v1/hermes/approvals",token)).json().items).toHaveLength(0);
-   expect(hermesCalls).toHaveLength(1); // No native Hermes /approval, n8n or email dispatch.
+   expect(hermesCalls.filter(x=>x.method==="POST")).toHaveLength(1); // No native Hermes approval or external dispatch.
+ });
+ it("releases a normal completed worker and accepts a second message in the SAME session",async()=>{
+   const token=await phone();await launch(token);
+   mockRunStatus.set(runId,"completed");
+   const second=await post("/v1/hermes/runs",{
+     requestId:"req_hermes_session_second_002",conversationId:"conversation_hermes_001",
+     input:"Second instruction in the existing conversation."
+   },token);
+   expect(second.statusCode).toBe(202);
+   const nextId=second.json().runId as string;
+   expect(nextId).not.toBe(runId);
+   const db=new Database(env.dbFile,{readonly:true});
+   try{
+     const rows=db.prepare("SELECT run_id,state,completed_at,completion_reason FROM mission_runs"+
+       " WHERE session_id='conversation_hermes_001' ORDER BY created_at,rowid")
+       .all() as {run_id:string;state:string;completed_at:number|null;completion_reason:string|null}[];
+     expect(rows).toHaveLength(2);
+     expect(rows[0]).toMatchObject({run_id:runId,state:"COMPLETED",completion_reason:"HERMES_WORKER_COMPLETED"});
+     expect(rows[0].completed_at).not.toBeNull();
+     expect(rows[1]).toMatchObject({run_id:nextId,state:"ACTIVE"});
+     expect(rows[1].completed_at).toBeNull();
+   }finally{db.close();}
+ });
+ it("approval alone never releases a still-running worker; terminal confirmation does",async()=>{
+   const token=await phone();await launch(token);
+   const prop=await createProposal();
+   const envlp=await preview(token,prop);
+   const approved=await post("/v1/hermes/approvals/"+prop+"/approve",{
+     signatureDerBase64:sig(approvalBytes(envlp))
+   },token);
+   expect(approved.statusCode).toBe(200);
+   const attempted=await post("/v1/hermes/runs",{
+     requestId:"req_hermes_waiting_on_worker_002",conversationId:"conversation_hermes_001",
+     input:"No second run while the first worker is still running."
+   },token);
+   expect(attempted.statusCode).toBe(409);
+   mockRunStatus.set(runId,"completed");
+   const confirmed=await get("/v1/hermes/runs/"+runId,token);
+   expect(confirmed.json()).toMatchObject({workerStatus:"completed",missionState:"COMPLETED",sessionReleased:true});
+   const second=await post("/v1/hermes/runs",{
+     requestId:"req_hermes_after_approval_003",conversationId:"conversation_hermes_001",
+     input:"Start after a verified completed worker."
+   },token);
+   expect(second.statusCode).toBe(202);
+   expect(second.json().runId).not.toBe(runId);
+ });
+ it("reject releases only on a terminal worker, and unknown worker outcome never releases",async()=>{
+   const token=await phone();await launch(token);
+   const prop=await createProposal();
+   expect((await post("/v1/hermes/approvals/"+prop+"/reject",{},token)).statusCode).toBe(200);
+   mockRunStatus.set(runId,"unknown");
+   const unknown=await get("/v1/hermes/runs/"+runId,token);
+   expect(unknown.json()).toMatchObject({missionState:"AWAITING_SIGNATURE",sessionReleased:false});
+   mockRunStatus.set(runId,"completed");
+   const complete=await get("/v1/hermes/runs/"+runId,token);
+   expect(complete.json()).toMatchObject({missionState:"REVOKED",sessionReleased:true});
+   const second=await post("/v1/hermes/runs",{
+     requestId:"req_hermes_after_reject_002",conversationId:"conversation_hermes_001",
+     input:"New run after rejected prior action."
+   },token);
+   expect(second.statusCode).toBe(202);
+ });
+ it("terminal Hermes alone does not bypass an unresolved iPhone approval",async()=>{
+   const token=await phone();await launch(token);
+   await createProposal();
+   mockRunStatus.set(runId,"completed");
+   const status=await get("/v1/hermes/runs/"+runId,token);
+   expect(status.json()).toMatchObject({missionState:"AWAITING_SIGNATURE",sessionReleased:false});
+   const next=await post("/v1/hermes/runs",{
+     requestId:"req_hermes_pending_phone_002",conversationId:"conversation_hermes_001",
+     input:"New run should not escape an unapproved pending action."
+   },token);
+   expect(next.statusCode).not.toBe(202);
  });
  it("atomically accepts one of two parallel sensitive proposals and replays the accepted call",async()=>{
    const token=await phone();await launch(token);
@@ -319,7 +397,7 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
    expect((await post("/v1/hermes/approvals/"+prop+"/approve",{
      signatureDerBase64:sig(approvalBytes(envlp))
    },token)).statusCode).toBe(403);
-   expect(hermesCalls).toHaveLength(1);
+   expect(hermesCalls.filter(x=>x.method==="POST")).toHaveLength(1);
  });
  it("handles reject and revoked owner session without executing anything",async()=>{
    const token=await phone();await launch(token);
