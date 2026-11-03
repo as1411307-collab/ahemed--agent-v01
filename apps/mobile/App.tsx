@@ -28,8 +28,8 @@ import {
 } from "@ahmed/contract";
 import {ApiError, CORE_URL, decide, getConversation, getTask, newId, sendMessage,
  requestSignedPreview, submitSignedPreview, rejectSignedPreview,
- listHermesApprovals,previewHermesApproval,startHermesRun,submitHermesDemoApproval,rejectHermesDemoApproval,
- type HermesPendingApproval,type PickedFile} from "./src/api";
+ listHermesApprovals,previewHermesApproval,submitHermesDemoApproval,rejectHermesDemoApproval,
+ getCoreCapabilities,type CoreCapabilities,type HermesPendingApproval,type PickedFile} from "./src/api";
 import {ApprovalReview} from "./src/security/ApprovalReview";
 import type {DisplayEnvelope} from "./src/security/approval-display";
 import {enrollDevice,getDeviceAccessToken,hasPairedDevice,revokeOwnDevice} from "./src/security/device-client";
@@ -93,6 +93,7 @@ export default function App() {
   const [showTasks, setShowTasks] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [needsPairing,setNeedsPairing] = useState(false);
+  const [coreCapabilities,setCoreCapabilities] = useState<CoreCapabilities|null>(null);
   const [pairingCode,setPairingCode] = useState("");
   const [pairingBusy,setPairingBusy] = useState(false);
   const [pairingError,setPairingError] = useState<string|null>(null);
@@ -101,6 +102,16 @@ export default function App() {
   const [reviewHermes,setReviewHermes] = useState(false);
   const [activeHermesProposalId,setActiveHermesProposalId] = useState<string|null>(null);
   const listRef = useRef<FlatList<ConversationMessage>>(null);
+
+  // A missing/failed status request must never be interpreted as a functioning agent.
+  const refreshCoreCapabilities = useCallback(async () => {
+    try {
+      const result = await getCoreCapabilities();
+      setCoreCapabilities(result.schemaVersion === 1 ? result : null);
+    } catch {
+      setCoreCapabilities(null);
+    }
+  }, []);
 
   // ---- restore conversation id and state from the Core ----
   const load = useCallback(async (id: string) => {
@@ -136,9 +147,10 @@ export default function App() {
         await AsyncStorage.setItem(STORAGE_KEY, id).catch(() => {});
       }
       setConversationId(id);
+      void refreshCoreCapabilities();
       await load(id);
     })();
-  }, [load]);
+  }, [load, refreshCoreCapabilities]);
 
   const tasks = conv?.tasks ?? [];
   const taskById = useMemo(() => new Map(tasks.map((t) => [t.task_id, t])), [tasks]);
@@ -157,11 +169,14 @@ export default function App() {
     }
   }, []);
   useEffect(()=>{
-    if(!conversationId || needsPairing)return;
+    if(!conversationId || needsPairing || coreCapabilities?.features.hermesRuns !== "INJECTED_TRANSPORT_DEMO_ONLY"){
+      setHermesApprovals([]);
+      return;
+    }
     void refreshHermes();
     const timer=setInterval(()=>void refreshHermes(),5000);
     return ()=>clearInterval(timer);
-  },[conversationId,needsPairing,refreshHermes]);
+  },[conversationId,needsPairing,refreshHermes,coreCapabilities?.features.hermesRuns]);
 
   // ---- poll unfinished tasks every 2 seconds ----
   const runningKey = running.map((t) => `${t.task_id}:${t.response.status}`).join(",");
@@ -216,19 +231,6 @@ export default function App() {
       return;
     }
     void doSend({ requestId: newId(), text: t, file });
-  };
-
-  const onSendHermes = async () => {
-    if(sending || !conversationId || !text.trim() || file)return;
-    setSending(true);setHint(null);
-    try {
-      const result=await startHermesRun({requestId:newId(),conversationId,input:text.trim()});
-      setText("");
-      setHint("Hermes run started: "+result.runId+". DEMO action review only.");
-      setError(null);
-      await refreshHermes();
-    } catch(e) {setError({text:errorText(e),retry:()=>void onSendHermes()});}
-    finally {setSending(false);}
   };
 
   const onPick = async () => {
@@ -308,6 +310,7 @@ export default function App() {
       let id=await AsyncStorage.getItem(STORAGE_KEY);
       if(!id){id=newId();await AsyncStorage.setItem(STORAGE_KEY,id);}
       setConversationId(id);
+      void refreshCoreCapabilities();
       await load(id);
     }catch(e){setPairingError(errorText(e));}
     finally{setPairingBusy(false);}
@@ -381,7 +384,18 @@ export default function App() {
           </Pressable>
         </View>
 
-        {showTasks && <TaskList tasks={tasks} />}
+        <View style={[s.runningRow,{paddingVertical:8,paddingHorizontal:14}]}>
+          <Text style={{color:C.gold,flex:1,fontSize:12}}>
+            {coreCapabilities
+              ? "CORE: " + coreCapabilities.mode
+                + " · Hermes: " + coreCapabilities.features.hermesRuns
+                + " · Actions: " + coreCapabilities.features.signedApprovalEffects
+                + (coreCapabilities.features.modelInputMayLeaveServer
+                    ? "\nModel inputs may be sent to a configured provider." : "")
+              : "Core capabilities unverified. Never treat a signature as proof of execution."}
+          </Text>
+        </View>
+        {showTasks && <TaskList tasks={tasks} />
 
         {error && (
           <View style={s.errorBar}>
@@ -477,11 +491,6 @@ export default function App() {
             placeholderTextColor={C.muted}
             multiline
           />
-          <Pressable accessibilityRole="button" onPress={()=>void onSendHermes()}
-            disabled={sending || !text.trim() || !!file}
-            style={[s.headerBtn,(sending || !text.trim() || !!file) && s.disabled]}>
-            <Text style={s.headerBtnText}>Hermes DEMO</Text>
-          </Pressable>
           {/* Never a dead button: when there is nothing to send, pressing it explains why. */}
           <Pressable
             onPress={onSend}
