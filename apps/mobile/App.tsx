@@ -28,7 +28,7 @@ import {
 } from "@ahmed/contract";
 import {ApiError, CORE_URL, decide, getConversation, getTask, newId, sendMessage,
  requestSignedPreview, submitSignedPreview, rejectSignedPreview,
- listHermesApprovals,startHermesRun,submitHermesDemoApproval,rejectHermesDemoApproval,
+ listHermesApprovals,previewHermesApproval,startHermesRun,submitHermesDemoApproval,rejectHermesDemoApproval,
  type HermesPendingApproval,type PickedFile} from "./src/api";
 import {ApprovalReview} from "./src/security/ApprovalReview";
 import type {DisplayEnvelope} from "./src/security/approval-display";
@@ -99,6 +99,7 @@ export default function App() {
   const [activeReview,setActiveReview] = useState<DisplayEnvelope|null>(null);
   const [hermesApprovals,setHermesApprovals] = useState<HermesPendingApproval[]>([]);
   const [reviewHermes,setReviewHermes] = useState(false);
+  const [activeHermesProposalId,setActiveHermesProposalId] = useState<string|null>(null);
   const listRef = useRef<FlatList<ConversationMessage>>(null);
 
   // ---- restore conversation id and state from the Core ----
@@ -246,34 +247,44 @@ export default function App() {
     }catch(e){setError({text:errorText(e),retry:()=>void startSignedReview(task)});}
     finally{setDeciding(null);}
   }
-  function startHermesReview(item:HermesPendingApproval):void{
-    if(item.mode!=="DEMO_NO_EXECUTION")return;
-    setReviewHermes(true);
-    setActiveReview(item.envelope);
+  async function startHermesReview(item:HermesPendingApproval):Promise<void>{
+    if(item.mode!=="DEMO_NO_EXECUTION" || deciding)return;
+    setDeciding(item.actionId);
+    try{
+      const p=await previewHermesApproval(item.proposalId);
+      if(p.mode!=="DEMO_NO_EXECUTION" || p.proposalId!==item.proposalId)
+        throw new Error("Invalid Gateway approval preview");
+      setActiveHermesProposalId(item.proposalId);
+      setReviewHermes(true);
+      setActiveReview(p.envelope);
+    }catch(e){setError({text:errorText(e),retry:()=>void startHermesReview(item)});}
+    finally{setDeciding(null);}
   }
   async function signReviewed(signatureDerBase64:string):Promise<void>{
     if(!activeReview)throw new Error('No signed preview');
     if(reviewHermes){
-      const result=await submitHermesDemoApproval(activeReview.actionId,signatureDerBase64);
+      if(!activeHermesProposalId)throw new Error("Missing Gateway proposal identity");
+      const result=await submitHermesDemoApproval(activeHermesProposalId,signatureDerBase64);
       if(result.status!=="DEMO_VERIFIED_NO_EFFECT" || result.execution!=="NONE")throw new Error("Demo receipt mismatch");
-      setHermesApprovals(v=>v.filter(x=>x.actionId!==activeReview.actionId));
+      setHermesApprovals(v=>v.filter(x=>x.actionId!==activeHermesProposalId));
     } else {
       const result=await submitSignedPreview(activeReview.actionId,signatureDerBase64);
       if(result.status!=="DEMO_SIGNED_NO_EXECUTION")throw new Error("Unexpected server result");
     }
-    setActiveReview(null);setReviewHermes(false);
+    setActiveReview(null);setReviewHermes(false);setActiveHermesProposalId(null);
     setHint("Signed receipt verified. DEMO ONLY: no action executed.");
   }
   async function rejectReviewed():Promise<void>{
     if(!activeReview)return;
     try{
       if(reviewHermes){
-        await rejectHermesDemoApproval(activeReview.actionId);
-        setHermesApprovals(v=>v.filter(x=>x.actionId!==activeReview.actionId));
+        if(!activeHermesProposalId)throw new Error("Missing Gateway proposal identity");
+        await rejectHermesDemoApproval(activeHermesProposalId);
+        setHermesApprovals(v=>v.filter(x=>x.actionId!==activeHermesProposalId));
       }else{
         await rejectSignedPreview(activeReview.actionId);
       }
-      setActiveReview(null);setReviewHermes(false);
+      setActiveReview(null);setReviewHermes(false);setActiveHermesProposalId(null);
       setHint("Proposal rejected. Nothing executed.");
     }catch(e){setError({text:errorText(e),retry:()=>void rejectReviewed()});}
   }
@@ -410,11 +421,11 @@ export default function App() {
         {hermesApprovals.map((item)=>(
           <View key={item.actionId} style={[s.runningRow,{gap:10}]}>
             <Text style={{color:C.gold,flex:1}}>
-              Hermes DEMO · {item.envelope.serviceId} / {item.envelope.operation}
-              {"\n"}To: {item.envelope.destination}
+              Hermes DEMO · {item.displayName}
+              {"\n"}To: {item.destination}
             </Text>
-            <Pressable accessibilityRole="button" onPress={()=>startHermesReview(item)}
-              style={s.headerBtn}>
+            <Pressable accessibilityRole="button" onPress={()=>void startHermesReview(item)}
+              disabled={deciding===item.actionId} style={s.headerBtn}>
               <Text style={s.headerBtnText}>Review & sign</Text>
             </Pressable>
           </View>
