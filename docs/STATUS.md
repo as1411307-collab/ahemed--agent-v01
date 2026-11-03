@@ -2,6 +2,14 @@
 
 **Scope:** `repair/server-first-truth-2026-11-03` is a review-only repair branch. It has NOT been merged to `main`, deployed to a VPS, built on an iPhone or validated by running tests in this repair session.
 
+## Current single-path runtime (repair branch)
+
+- **One supported user-facing path:** iPhone `App.tsx` -> `api.ts:sendMessage` -> `POST /v1/messages` -> `Agent` -> existing SQLite `tasks`. This is the current ledger authority; it has NOT been migrated or deleted.
+- **Hermes not initialized in the runnable entrypoint:** `main.ts` no longer passes a `hermesBridge`. The separate bridge code is kept solely for backward compatibility/isolated demos; no Hermes controls or Hermes API calls remain in the iPhone UI/client. PR #5 remains unmerged.
+- **External writes are not enabled.** Signed previews in development are no-effect demonstrations. Production requires explicit `CORE_PRODUCTION_TIER=COGNITIVE_READ_ONLY`, binds loopback, declines Hermes and external acts, limits model tools and file access. Signing does not prove an external action ran.
+- **Pairing requires an actual random secret.** Example `.env` pairing value is empty; the known example placeholder is rejected on startup, including old locally copied templates.
+- **No tests/deployments performed during this repair.** The branch is proposed code, not a verified service.
+
 ## Truths from repository inspection
 
 - `main` already contains merged PR #7, #8 and #9. PR #5 (`nexus/parallel-foundation`) remains unmerged and MUST NOT be merged wholesale to resolve the separate task ledgers.
@@ -10,7 +18,7 @@
 - Signed iPhone approval receipts remain DEMO / NO EFFECT. The silent device key does not enforce fresh biometric/user presence. A real high-risk approval scheme requires a separate enrolled policy-bound key and independent broker verification.
 - Production can be configured for `CORE_PRODUCTION_TIER=COGNITIVE_READ_ONLY` only if local credential inventory passes, Core binds to loopback, no Hermes bridge is configured and sensitive tools are disallowed by the strict runtime flag. External-action tier is unconditionally denied. This is an eligibility check, NOT deployment/network/provider attestation.
 - In the strict cognitive tier, the model can only request reads of uploaded attachments belonging to the same conversation up to that task; arbitrary workspace reads and write tools are denied. User-provided text and allowed attachment contents can still leave the host for Anthropic.
-- The iPhone now obtains an authenticated capability declaration, refreshes it while active, and no longer offers a blocked Hermes run button. A successful capability response is NOT proof of model execution or external effects.
+- The iPhone now obtains an authenticated capability declaration and refreshes it while active; all obsolete Hermes demo screens, controls and calls have been removed. A successful status response is NOT proof of an external action.
 - Core environment template escaped newline literals were repaired on this branch.
 - Duplicate request IDs with different text, file metadata, or file bytes are now rejected instead of silently returning a previous task. Normal repeated bytes still return the stored task.
 
