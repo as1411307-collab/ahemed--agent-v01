@@ -29,7 +29,8 @@ export function assertDisplayEnvelope(v:unknown): asserts v is DisplayEnvelope {
     if(!c || typeof c!=='object' || Array.isArray(c) ||
        JSON.stringify(Object.keys(c).sort())!==JSON.stringify([
          'source','proposalId','runId','callId','registryVersion','workflowDisplayName',
-         'workflowDescription','declaredEffects','workflowConfigDigest','registryTrust'].sort()) ||
+         'workflowDescription','declaredEffects','workflowConfigDigest',
+         'effectIdempotencyKey','proposalDeadlineAt','registryTrust'].sort()) ||
        c.source!=='hermes'||c.registryTrust!=='DEMO_UNVERIFIED' ||
        !Array.isArray(c.declaredEffects)||c.declaredEffects.length<1||c.declaredEffects.length>8)
       throw new Error('APPROVAL_INVALID_CONTEXT');
@@ -38,6 +39,10 @@ export function assertDisplayEnvelope(v:unknown): asserts v is DisplayEnvelope {
       if(typeof c[key]!=='string'||!(c[key] as string).trim()||(c[key] as string).length>1024)
         throw new Error('APPROVAL_INVALID_CONTEXT_FIELD');
     }
+    if(typeof c.effectIdempotencyKey!=='string' ||
+       !/^nexus_[a-f0-9-]{36}$/.test(c.effectIdempotencyKey) ||
+       !Number.isSafeInteger(c.proposalDeadlineAt) || Number(c.proposalDeadlineAt)<=0)
+      throw new Error('APPROVAL_INVALID_EFFECT_ID');
     if(!c.declaredEffects.every((v:unknown)=>typeof v==='string'&&v.length<=150&&v.length>0))
       throw new Error('APPROVAL_INVALID_EFFECTS');
   }
@@ -60,6 +65,8 @@ export function approvalDisplayRows(e:DisplayEnvelope):{label:string;value:strin
       {label:'شرح العملية',value:e.approvalContext.workflowDescription},
       {label:'التأثيرات المعلنة',value:e.approvalContext.declaredEffects.join(' | ')},
       {label:'مصدر الطلب',value:e.approvalContext.runId+' / '+e.approvalContext.callId},
+      {label:'ينتهي طلب الموافقة',value:new Date(e.approvalContext.proposalDeadlineAt).toISOString()},
+      {label:'معرّف التنفيذ الموحد',value:e.approvalContext.effectIdempotencyKey},
       {label:'إصدار سجل التعريف',value:e.approvalContext.registryVersion},
       {label:'بصمة إعداد Workflow',value:e.approvalContext.workflowConfigDigest},
       {label:'بصمة طلب الموافقة',value:e.canonicalPayloadHash ?? ''},
