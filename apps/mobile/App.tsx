@@ -106,7 +106,7 @@ export default function App() {
       const result = await getCoreCapabilities();
       const valid = result?.schemaVersion === 1 &&
         typeof result.features?.signedApprovalEffects === "string" &&
-        typeof result.features?.hermesRuns === "string";
+        result.features?.canonicalMissionLedger === "LEGACY_TASKS";
       setCoreCapabilities(valid ? result : null);
     } catch {
       setCoreCapabilities(null);
