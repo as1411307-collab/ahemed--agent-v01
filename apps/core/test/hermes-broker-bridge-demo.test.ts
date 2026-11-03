@@ -219,8 +219,9 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
    expect(modified.json().error.message).toContain("CALL_ID_INTENT_MISMATCH_RUN_REVOKED");
    const db=new Database(env.dbFile,{readonly:true});
    try{
-     expect((db.prepare("SELECT state FROM mission_runs WHERE run_id=?").get(runId)
-       as {state:string}).state).toBe("REVOKED");
+     const revoked=db.prepare("SELECT state FROM mission_runs WHERE run_id=?").get(runId)
+       as {state:string};
+     expect(revoked.state).toBe("REVOKED");
      const num=db.prepare("SELECT COUNT(*) AS n FROM hermes_action_proposals WHERE run_id=?")
        .get(runId) as {n:number};
      expect(num.n).toBe(1);
