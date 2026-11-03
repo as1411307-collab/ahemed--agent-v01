@@ -39,6 +39,7 @@ export class Agent {
     private readonly ws: Workspace,
     private readonly model: ModelClient,
     private readonly approvalTtlMs: number = APPROVAL_TTL_MS,
+    private readonly allowSensitiveExecution: boolean = true,
   ) {}
 
   // ================= processing a new message =================
@@ -181,6 +182,9 @@ export class Agent {
   // ================= approval decisions =================
 
   decide(taskId: string, actionId: string, decision: DecisionValue): DecisionOutcome {
+    if (decision === "APPROVE" && !this.allowSensitiveExecution) {
+      throw new Error("SENSITIVE_EXECUTION_DISABLED: signed trial only records broker proof");
+    }
     const action = this.store.getAction(actionId);
     if (!action || action.task_id !== taskId) return { kind: "not_found" };
 
@@ -259,6 +263,7 @@ export class Agent {
   // ================= execution & verification =================
 
   private executeAction(actionId: string): void {
+    if (!this.allowSensitiveExecution) throw new Error("SENSITIVE_EXECUTION_DISABLED");
     const action = this.store.getAction(actionId)!;
     const task = this.store.getTask(action.task_id)!;
     const execution = this.store.getExecution(action.idempotency_key);

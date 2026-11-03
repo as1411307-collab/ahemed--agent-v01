@@ -1,1 +1,11 @@
-{"platforms":["ios"],"ios":{"modules":["EnclaveSignerModule"]}}
+{
+  "platforms": [
+    "ios"
+  ],
+  "ios": {
+    "podspecPath": "ios/EnclaveSigner.podspec",
+    "modules": [
+      "EnclaveSignerModule"
+    ]
+  }
+}

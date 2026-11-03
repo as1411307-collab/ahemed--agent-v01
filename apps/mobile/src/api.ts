@@ -1,4 +1,6 @@
 import { File } from "expo-file-system";
+import {getDeviceAccessToken} from "./security/device-client";
+import type {DisplayEnvelope} from "./security/approval-display";
 import {
   CONTRACT_VERSION,
   type AgentRequest,
@@ -8,9 +10,8 @@ import {
   type DecisionValue,
 } from "@ahmed/contract";
 
-// The app only knows the Core URL and its own app token. No model keys, no agent logic.
+// Only a public HTTPS Core URL is bundled. Authentication uses device-signed short sessions.
 export const CORE_URL = (process.env.EXPO_PUBLIC_CORE_URL ?? "").replace(/\/+$/, "");
-const APP_TOKEN = process.env.EXPO_PUBLIC_APP_TOKEN ?? "";
 
 export class ApiError extends Error {
   constructor(
@@ -23,16 +24,15 @@ export class ApiError extends Error {
 }
 
 async function call<T>(path: string, init: RequestInit = {}, timeoutMs = 20_000): Promise<T> {
-  if (!CORE_URL || !APP_TOKEN) {
-    throw new ApiError(0, "CONFIG", "Set EXPO_PUBLIC_CORE_URL and EXPO_PUBLIC_APP_TOKEN in apps/mobile/.env, then restart Expo.");
-  }
+  if (!CORE_URL) throw new ApiError(0, "CONFIG", "Set EXPO_PUBLIC_CORE_URL to the Core HTTPS endpoint.");
+  const accessToken=await getDeviceAccessToken();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(`${CORE_URL}${path}`, {
       ...init,
-      headers: { ...(init.headers as Record<string, string>), Authorization: `Bearer ${APP_TOKEN}` },
+      headers: { ...(init.headers as Record<string, string>), Authorization: `Bearer ${accessToken}` },
       signal: ctrl.signal,
     });
   } catch (err) {
@@ -105,5 +105,27 @@ export function newId(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+/** TEST ONLY: preview is derived from the existing server-side pending action. */
+export interface SignedPreviewResponse {
+  mode:'DEMO_NO_EXECUTION';
+  envelope:DisplayEnvelope;
+  digest:string;
+}
+export function requestSignedPreview(taskId:string,actionId:string):Promise<SignedPreviewResponse>{
+  return call<SignedPreviewResponse>(
+    `/v1/tasks/${encodeURIComponent(taskId)}/actions/${encodeURIComponent(actionId)}/signed-preview`,
+    {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+}
+export function submitSignedPreview(actionId:string,signatureDerBase64:string):Promise<{status:'DEMO_SIGNED_NO_EXECUTION';digest:string;receipt:string}>{
+  return call(`/v1/security/actions/${encodeURIComponent(actionId)}/approve`,{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signatureDerBase64}),
+  });
+}
+export function rejectSignedPreview(actionId:string):Promise<{status:'DEMO_REJECTED_NO_EXECUTION'}>{
+  return call(`/v1/security/actions/${encodeURIComponent(actionId)}/reject`,{
+    method:'POST',headers:{'Content-Type':'application/json'},body:'{}',
   });
 }

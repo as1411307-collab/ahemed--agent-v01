@@ -5,8 +5,7 @@
 import React,{useState} from 'react';
 import {ActivityIndicator,Pressable,ScrollView,Text,View} from 'react-native';
 import EnclaveSigner from '../../modules/enclave-signer';
-import {canonicalize} from '../../../core/src/security/canonical';
-import {approvalDisplayRows,type DisplayEnvelope} from './approval-display';
+import {approvalDisplayRows,approvalCanonicalText,approvalSignedText,type DisplayEnvelope} from './approval-display';
 
 export function ApprovalReview(props:{
   envelope:DisplayEnvelope;
@@ -22,7 +21,7 @@ export function ApprovalReview(props:{
     if(busy)return;
     setBusy(true);setError(null);
     try{
-      const bytes='AHMED-ACTION-APPROVAL-V1\n'+canonicalize(snapshot);
+      const bytes=approvalSignedText(snapshot);
       const signature=await EnclaveSigner.signApprovalBytes(bytes);
       await props.onSigned(signature);
     }catch(e){setError(e instanceof Error?e.message:'تعذر التوقيع');}
@@ -35,6 +34,8 @@ export function ApprovalReview(props:{
       <Text style={{fontWeight:'bold'}}>{row.label}</Text>
       <Text selectable style={{fontFamily:'monospace'}}>{row.value}</Text>
     </View>)}
+    <Text style={{fontWeight:'bold'}}>Exact signed data (canonical JSON)</Text>
+    <Text selectable style={{fontFamily:'monospace',fontSize:11}}>{approvalCanonicalText(snapshot)}</Text>
     {error?<Text accessibilityRole='alert'>{error}</Text>:null}
     <Pressable accessibilityRole='button' disabled={busy} onPress={approve}>
       {busy?<ActivityIndicator/>:<Text>أوافق وأوقّع</Text>}

@@ -1,3 +1,4 @@
+import {canonicalize} from "../../../core/src/security/canonical";
 /** Render only structured broker envelopes. No model-provided description. */
 export interface DisplayEnvelope {
   type:'ahmed.action.approval.v1'; audience:'ahmed-action-broker';
@@ -36,4 +37,12 @@ export function approvalDisplayRows(e:DisplayEnvelope):{label:string;value:strin
     {label:'تنتهي الموافقة',value:new Date(e.expiresAt).toISOString()},
     {label:'معرّف العملية',value:e.actionId},
   ];
+}
+/** Exact bytes displayed and signed. Every envelope field is included. */
+export function approvalCanonicalText(e:DisplayEnvelope):string{
+  assertDisplayEnvelope(e);
+  return canonicalize(e);
+}
+export function approvalSignedText(e:DisplayEnvelope):string{
+  return 'AHMED-ACTION-APPROVAL-V1\n'+approvalCanonicalText(e);
 }

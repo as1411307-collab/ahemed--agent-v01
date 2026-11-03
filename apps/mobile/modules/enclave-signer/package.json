@@ -1,0 +1,7 @@
+{
+  "name": "enclave-signer",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "description": "Local Expo iOS Secure Enclave signing module"
+}

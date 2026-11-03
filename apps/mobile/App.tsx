@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -25,7 +26,11 @@ import {
   type ResultData,
   type TaskStatus,
 } from "@ahmed/contract";
-import { ApiError, CORE_URL, decide, getConversation, getTask, newId, sendMessage, type PickedFile } from "./src/api";
+import {ApiError, CORE_URL, decide, getConversation, getTask, newId, sendMessage,
+ requestSignedPreview, submitSignedPreview, rejectSignedPreview, type PickedFile} from "./src/api";
+import {ApprovalReview} from "./src/security/ApprovalReview";
+import type {DisplayEnvelope} from "./src/security/approval-display";
+import {enrollDevice,hasPairedDevice,revokeOwnDevice} from "./src/security/device-client";
 
 const C = {
   bg: "#000000",
@@ -40,7 +45,7 @@ const C = {
   ok: "#46A758",
 };
 
-const STORAGE_KEY = "ahmed.conversation_id";
+const STORAGE_KEY = "ahmed.signed.conversation_id.v1";
 const POLL_MS = 2000;
 
 const isRunning = (s: TaskStatus | null) => !!s && !FINAL_STATUSES.includes(s) && s !== "WAITING_FOR_APPROVAL";
@@ -85,6 +90,11 @@ export default function App() {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [showTasks, setShowTasks] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [needsPairing,setNeedsPairing] = useState(false);
+  const [pairingCode,setPairingCode] = useState("");
+  const [pairingBusy,setPairingBusy] = useState(false);
+  const [pairingError,setPairingError] = useState<string|null>(null);
+  const [activeReview,setActiveReview] = useState<DisplayEnvelope|null>(null);
   const listRef = useRef<FlatList<ConversationMessage>>(null);
 
   // ---- restore conversation id and state from the Core ----
@@ -101,6 +111,9 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
+      if(!await hasPairedDevice()){
+        setNeedsPairing(true);setLoading(false);return;
+      }
       let id = await AsyncStorage.getItem(STORAGE_KEY).catch(() => null);
       if (!id) {
         id = newId();
@@ -185,7 +198,47 @@ export default function App() {
     }
   };
 
+  async function startSignedReview(task:ConversationTask):Promise<void>{
+    const a=task.response.data as ApprovalRequest;
+    if(deciding)return;
+    setDeciding(a.action_id);
+    try{
+      const preview=await requestSignedPreview(task.task_id,a.action_id);
+      if(preview.mode!=='DEMO_NO_EXECUTION')throw new Error('Server did not confirm demo mode');
+      setActiveReview(preview.envelope);
+      setError(null);
+    }catch(e){setError({text:errorText(e),retry:()=>void startSignedReview(task)});}
+    finally{setDeciding(null);}
+  }
+  async function signReviewed(signatureDerBase64:string):Promise<void>{
+    if(!activeReview)throw new Error('No signed preview');
+    const result=await submitSignedPreview(activeReview.actionId,signatureDerBase64);
+    if(result.status!=='DEMO_SIGNED_NO_EXECUTION')throw new Error('Unexpected server result');
+    setActiveReview(null);
+    setHint('Signature verified by Core + Broker. DEMO ONLY: no action executed.');
+  }
+  async function rejectReviewed():Promise<void>{
+    if(!activeReview)return;
+    try{
+      await rejectSignedPreview(activeReview.actionId);
+      setActiveReview(null);setHint('Signed preview rejected. Nothing executed.');
+    }catch(e){setError({text:errorText(e),retry:()=>void rejectReviewed()});}
+  }
+  async function pair():Promise<void>{
+    if(pairingBusy)return;
+    setPairingBusy(true);setPairingError(null);
+    try{
+      await enrollDevice(pairingCode);
+      setPairingCode('');setNeedsPairing(false);
+      let id=await AsyncStorage.getItem(STORAGE_KEY);
+      if(!id){id=newId();await AsyncStorage.setItem(STORAGE_KEY,id);}
+      setConversationId(id);
+      await load(id);
+    }catch(e){setPairingError(errorText(e));}
+    finally{setPairingBusy(false);}
+  }
   const onDecide = async (task: ConversationTask, decision: DecisionValue) => {
+    if(decision==='APPROVE'){setHint('Unsigned approval is disabled. Use signed demo review.');return;}
     const a = task.response.data as ApprovalRequest;
     if (!conversationId || deciding) return;
     setDeciding(a.action_id);
@@ -202,6 +255,30 @@ export default function App() {
 
   // ---- render ----
   const latest = tasks[0]?.response;
+  if(needsPairing)return (
+    <View style={[s.root,{padding:24,justifyContent:'center',gap:18}]}>
+      <StatusBar style="light"/>
+      <Text style={[s.title,{fontSize:24}]}>Secure iPhone pairing</Text>
+      <Text style={s.muted}>Requires an iOS Development Client and HTTPS Core. Enter the one-use 24+ character pairing code supplied privately by the server owner.</Text>
+      <TextInput style={s.input} value={pairingCode} onChangeText={setPairingCode}
+        autoCapitalize="none" autoCorrect={false} secureTextEntry
+        placeholder="One-time pairing code" placeholderTextColor={C.muted}/>
+      {pairingError?<Text style={s.errorText}>{pairingError}</Text>:null}
+      <Pressable style={[s.approveBtn,pairingBusy&&s.disabled]} disabled={pairingBusy} onPress={()=>void pair()}>
+        <Text style={s.approveText}>{pairingBusy?'Pairing…':'Pair this iPhone'}</Text>
+      </Pressable>
+    </View>
+  );
+  if(activeReview)return (
+    <View style={s.root}>
+      <StatusBar style="light"/>
+      <Text style={{color:C.gold,fontWeight:'bold',paddingHorizontal:20,paddingTop:12}}>
+        DEMO — signature verification only. No real action will execute.
+      </Text>
+      <ApprovalReview key={activeReview.actionId} envelope={activeReview}
+        onSigned={signReviewed} onReject={()=>void rejectReviewed()}/>
+    </View>
+  );
 
   return (
     <View style={s.root}>
@@ -215,6 +292,15 @@ export default function App() {
             </Text>
           </View>
           {latest?.status && <Badge status={latest.status} />}
+          <Pressable style={s.headerBtn} onPress={()=>Alert.alert(
+            'Revoke this device?',
+            'All sessions will be invalidated. Re-enrollment requires a new administrator-issued pairing code.',
+            [{text:'Cancel',style:'cancel'},{text:'Revoke',style:'destructive',onPress:()=>void revokeOwnDevice()
+              .then(()=>{setNeedsPairing(true);setConv(null);setConversationId(null);})
+              .catch(e=>setError({text:errorText(e),retry:()=>{}}))}]
+          )}>
+            <Text style={s.headerBtnText}>Revoke</Text>
+          </Pressable>
           <Pressable onPress={() => setShowTasks((v) => !v)} style={s.headerBtn}>
             <Text style={s.headerBtnText}>Tasks ({tasks.length})</Text>
           </Pressable>
@@ -264,6 +350,7 @@ export default function App() {
             task={t}
             busy={deciding === (t.response.data as ApprovalRequest).action_id}
             onDecide={(d) => void onDecide(t, d)}
+            onReview={() => void startSignedReview(t)}
           />
         ))}
 
@@ -351,16 +438,18 @@ function ApprovalCard({
   task,
   busy,
   onDecide,
+  onReview,
 }: {
   task: ConversationTask;
   busy: boolean;
   onDecide: (d: DecisionValue) => void;
+  onReview: () => void;
 }) {
   const a = task.response.data as ApprovalRequest;
   const minutesLeft = Math.max(0, Math.round((Date.parse(a.expires_at) - Date.now()) / 60000));
   return (
     <View style={s.card}>
-      <Text style={s.cardTitle}>Approval needed</Text>
+      <Text style={s.cardTitle}>Approval requested — dry-run security test</Text>
       <Text style={s.cardDesc}>{a.description}</Text>
       <Row k="Operation" v={a.operation} />
       <Row k="File" v={a.affected_resource} />
@@ -372,8 +461,8 @@ function ApprovalCard({
         <Pressable style={[s.rejectBtn, busy && s.disabled]} disabled={busy} onPress={() => onDecide("REJECT")}>
           <Text style={s.rejectText}>REJECT</Text>
         </Pressable>
-        <Pressable style={[s.approveBtn, busy && s.disabled]} disabled={busy} onPress={() => onDecide("APPROVE")}>
-          {busy ? <ActivityIndicator color={C.bg} /> : <Text style={s.approveText}>APPROVE</Text>}
+        <Pressable style={[s.approveBtn, busy && s.disabled]} disabled={busy} onPress={onReview}>
+          {busy ? <ActivityIndicator color={C.bg} /> : <Text style={s.approveText}>Review + sign (DEMO)</Text>}
         </Pressable>
       </View>
     </View>
