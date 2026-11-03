@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/main.ts",
+    "auth:rotate-device": "tsx src/security/rotate-device-cli.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },

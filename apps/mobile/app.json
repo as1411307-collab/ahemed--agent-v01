@@ -9,10 +9,7 @@
     "backgroundColor": "#000000",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ahmedagent.signedapprovaltrial",
-      "infoPlist": {
-        "NSFaceIDUsageDescription": "Confirm device authentication and your review of sensitive actions in Ahmed Agent."
-      }
+      "bundleIdentifier": "com.ahmedagent.signedapprovaltrial"
     },
     "android": {
       "adaptiveIcon": {

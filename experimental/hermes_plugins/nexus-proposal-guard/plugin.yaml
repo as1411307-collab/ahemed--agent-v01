@@ -1,0 +1,3 @@
+name: nexus-proposal-guard
+version: "0.1.0"
+description: NEXUS read-only Hermes guard and inert proposal stub; no live Gateway binding

@@ -1,0 +1,603 @@
+import {createHash,randomUUID,timingSafeEqual} from "node:crypto";
+import type Database from "better-sqlite3";
+import type {FastifyInstance,FastifyRequest} from "fastify";
+import {
+  ActionBrokerEnforcer,actionDigest,computeIntentHash,
+  type ActionEnvelope,type ApprovalContext,type FrozenRegistrySpec,type LockedActionIntent
+} from "./security/action-broker.js";
+import type {SqliteActionStore} from "./security/sqlite-action-store.js";
+import {canonicalize,type JsonValue} from "./security/canonical.js";
+import type {DeviceIdentity,DeviceSessions} from "./security/device-session.js";
+import type {Store} from "./store.js";
+
+/**
+ * Demo-only Hermes boundary. The plugin can PROPOSE and POLL only.
+ * The iPhone signs a new 90-second review snapshot on demand.
+ * NO Hermes native approval, NO n8n/email dispatch, NO automatic resume.
+ */
+export interface HermesBridgeOptions {
+  baseUrl:string;
+  apiKey:string;
+  proposalKey:string;
+  /** Mock-only transport. Live Hermes runs remain BLOCKED. */
+  transport?:typeof fetch;
+}
+interface Params {
+  app:FastifyInstance;db:Database.Database;store:Store;
+  devices:DeviceSessions;brokerStore:SqliteActionStore;
+  deviceOwner:(req:FastifyRequest)=>DeviceIdentity;
+  options:HermesBridgeOptions;now:()=>number;
+}
+type Launch={mission_id:string;run_id:string|null;owner_id:string;device_id:string;
+  conversation_id:string;request_id:string;input_digest:string;created_at:number};
+type Proposed={action_id:string;run_id:string;call_id:string;owner_id:string;
+  device_id:string;payload_digest:string;intent_hash:string|null;decision:string|null;
+  intent_json:string|null;deadline_at:number|null;created_at:number|null};
+type MissionRun={mission_id:string;session_id:string;run_id:string|null;
+  state:"STARTING"|"ACTIVE"|"AWAITING_SIGNATURE"|"COMPLETED"|"REVOKED";
+  proposals_count:number;max_proposals:number;created_at:number};
+type Preview={proposal_id:string;broker_action_id:string;created_at:number};
+type Proposal={sessionId:string;runId?:string;callId:string;serviceId:string;
+  operation:string;destination:string;arguments:Record<string,JsonValue>};
+const PROPOSAL_TTL_MS=2*60*60*1000;
+const SIGNATURE_TTL_MS=90_000;
+const REGISTRY_VERSION="nexus-demo-registry-v1";
+
+const DEMO_WORKFLOWS:Readonly<Record<string,{
+ displayName:string;description:string;declaredEffects:readonly string[];
+ allowedKeys:readonly string[];
+}>>=Object.freeze({
+ "workflow_demo_001":Object.freeze({
+   displayName:"NEXUS test workflow — NOT LINKED TO n8n",
+   description:"Simulates an n8n workflow request locally. No email, file, payment or cloud action.",
+   declaredEffects:Object.freeze(["NONE: demo receipt only, external execution disabled"]),
+   allowedKeys:Object.freeze(["text"]),
+ })
+});
+function fail(code:string):never{throw new Error("SECURITY_REJECT: "+code);}
+function id(v:unknown):v is string{
+ return typeof v==="string"&&/^[A-Za-z0-9_-]{8,100}$/.test(v);
+}
+function runId(v:unknown):v is string{
+ return typeof v==="string"&&/^[A-Za-z0-9_-]{4,128}$/.test(v);
+}
+function sha(s:string):string{return createHash("sha256").update(s,"utf8").digest("hex");}
+function same(a:string,b:string):boolean{
+ return timingSafeEqual(createHash("sha256").update(a).digest(),createHash("sha256").update(b).digest());
+}
+export function validBridgeBearer(header:unknown,key:string):boolean{
+ return typeof header==="string"&&header.startsWith("Bearer ")&&key.length>=32&&same(header.slice(7),key);
+}
+export function isHermesProposalRoute(method:string,path:string):boolean{
+ return (method==="POST"&&path==="/v1/hermes/bridge/actions")||
+   (method==="GET"&&/^\/v1\/hermes\/bridge\/actions\/[A-Za-z0-9_-]{8,100}$/.test(path));
+}
+function checkedUrl(raw:string):string{
+ const u=new URL(raw);
+ if(u.username||u.password||u.search||u.hash||u.pathname!=="/")fail("INVALID_HERMES_BASE_URL");
+ if(u.protocol!=="https:"&&!(u.protocol==="http:"&&
+   ["localhost","127.0.0.1","[::1]"].includes(u.hostname)))fail("HERMES_URL_REQUIRES_HTTPS");
+ return u.origin;
+}
+function registry(p:Pick<Proposal,"serviceId"|"operation"|"destination"|"arguments">){
+ if(p.serviceId!=="n8n"||p.operation!=="trigger_workflow")fail("OPERATION_NOT_ALLOWLISTED");
+ const entry=DEMO_WORKFLOWS[p.destination];
+ if(!entry)fail("WORKFLOW_NOT_REGISTERED");
+ const keys=Object.keys(p.arguments).sort();
+ if(JSON.stringify(keys)!==JSON.stringify([...entry.allowedKeys].sort())||
+    typeof p.arguments.text!=="string"||(p.arguments.text as string).length>256)
+   fail("WORKFLOW_ARGUMENT_SCHEMA_DENIED");
+ return entry;
+}
+function freezeRegistry(p:Pick<Proposal,"serviceId"|"operation"|"destination"|"arguments">):FrozenRegistrySpec{
+ const entry=registry(p);
+ // This is a local no-effect demonstration definition, NOT a verified n8n Cloud digest.
+ return {
+   registryVersion:REGISTRY_VERSION,title:entry.displayName,
+   humanSummary:entry.description,declaredSideEffects:[...entry.declaredEffects],
+   riskLevel:"L0",allowedKeys:[...entry.allowedKeys],
+   workflowConfigDigest:"UNVERIFIED_NO_REMOTE_N8N_CONFIGURATION",
+   registryTrust:"DEMO_UNVERIFIED"
+ };
+}
+function parseProposal(v:unknown):Proposal{
+ if(!v||typeof v!=="object"||Array.isArray(v))fail("INVALID_PROPOSAL");
+ const x=v as Record<string,unknown>;
+ const fields=Object.keys(x).sort();
+ const required=["sessionId","callId","serviceId","operation","destination","arguments"].sort();
+ const withRun=[...required,"runId"].sort();
+ if(JSON.stringify(fields)!==JSON.stringify(required)&&
+    JSON.stringify(fields)!==JSON.stringify(withRun))fail("INVALID_PROPOSAL_FIELDS");
+ if(!id(x.sessionId)||(x.runId!==undefined&&!runId(x.runId))||
+    !id(x.callId)||typeof x.serviceId!=="string"||
+    typeof x.operation!=="string"||typeof x.destination!=="string"||
+    !x.arguments||typeof x.arguments!=="object"||Array.isArray(x.arguments))
+   fail("INVALID_PROPOSAL");
+ const canonical=canonicalize(x.arguments);
+ if(Buffer.byteLength(canonical,"utf8")>16_384)fail("PROPOSAL_TOO_LARGE");
+ return {sessionId:x.sessionId,...(x.runId?{runId:x.runId}:{}),
+   callId:x.callId,serviceId:x.serviceId,operation:x.operation,destination:x.destination,
+   arguments:JSON.parse(canonical) as Record<string,JsonValue>};
+}
+function readIntent(row:Proposed):LockedActionIntent{
+ // Do not retrofit legacy V2 rows with a fabricated/unstable registry snapshot.
+ if(!row.intent_json||!row.deadline_at||!row.intent_hash)fail("LEGACY_PROPOSAL_QUARANTINED");
+ const intent=JSON.parse(row.intent_json) as LockedActionIntent;
+ if(computeIntentHash(intent)!==row.intent_hash||row.payload_digest!==row.intent_hash||
+    intent.proposalId!==row.action_id||intent.runId!==row.run_id||
+    intent.callId!==row.call_id||intent.ownerId!==row.owner_id||
+    intent.deviceId!==row.device_id||intent.proposalDeadlineAt!==row.deadline_at||
+    intent.proposalCreatedAt!==row.created_at||
+    intent.effectIdempotencyKey!=="nexus_"+row.action_id)
+   fail("PROPOSAL_TAMPERED");
+ return intent;
+}
+export function registerHermesBridge(p:Params):void{
+ const {app,db,store,devices,brokerStore,deviceOwner,options,now}=p;
+ const base=checkedUrl(options.baseUrl);
+ if(options.apiKey.length<24||options.proposalKey.length<32)throw new Error("HERMES_BRIDGE_KEYS_TOO_SHORT");
+ const transport=options.transport??fetch;
+ db.exec(
+   "CREATE TABLE IF NOT EXISTS hermes_launches("+
+   "mission_id TEXT PRIMARY KEY,run_id TEXT UNIQUE,owner_id TEXT NOT NULL,device_id TEXT NOT NULL,"+
+   "conversation_id TEXT NOT NULL,request_id TEXT UNIQUE NOT NULL,input_digest TEXT NOT NULL,"+
+   "created_at INTEGER NOT NULL);"+
+   "CREATE TABLE IF NOT EXISTS mission_runs("+
+   "mission_id TEXT PRIMARY KEY REFERENCES hermes_launches(mission_id),"+
+   "session_id TEXT NOT NULL,run_id TEXT UNIQUE,"+
+   "state TEXT NOT NULL CHECK(state IN ('STARTING','ACTIVE','AWAITING_SIGNATURE','COMPLETED','REVOKED')),"+
+   "proposals_count INTEGER NOT NULL DEFAULT 0 CHECK(proposals_count>=0),"+
+   "max_proposals INTEGER NOT NULL DEFAULT 3 CHECK(max_proposals BETWEEN 1 AND 10),"+
+   "created_at INTEGER NOT NULL,completed_at INTEGER,completion_reason TEXT);"+
+   "CREATE UNIQUE INDEX IF NOT EXISTS idx_single_active_run_per_session "+
+     "ON mission_runs(session_id) WHERE state IN ('STARTING','ACTIVE','AWAITING_SIGNATURE');"+
+   "CREATE TABLE IF NOT EXISTS hermes_action_proposals("+
+   "action_id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES hermes_launches(run_id),"+
+   "call_id TEXT NOT NULL,owner_id TEXT NOT NULL,device_id TEXT NOT NULL,"+
+   "payload_digest TEXT NOT NULL,decision TEXT CHECK(decision IN ('REJECTED','DEMO_VERIFIED')),"+
+   "intent_hash TEXT,intent_json TEXT,deadline_at INTEGER,created_at INTEGER,"+
+   "UNIQUE(run_id,call_id));"+
+   "CREATE TABLE IF NOT EXISTS hermes_proposal_previews("+
+   "proposal_id TEXT NOT NULL REFERENCES hermes_action_proposals(action_id),"+
+   "broker_action_id TEXT PRIMARY KEY,created_at INTEGER NOT NULL);"+
+   "CREATE INDEX IF NOT EXISTS hermes_preview_lookup ON hermes_proposal_previews(proposal_id,created_at);"+
+   "CREATE TABLE IF NOT EXISTS hermes_continuation_outbox("+
+   "proposal_id TEXT PRIMARY KEY REFERENCES hermes_action_proposals(action_id),"+
+   "run_id TEXT NOT NULL,outcome TEXT NOT NULL CHECK(outcome IN ('REJECTED','DEMO_VERIFIED')),"+
+   "receipt_digest TEXT,created_at INTEGER NOT NULL);"
+ );
+ // Existing PR #9 demo data has no trustworthy immutable intent or deadline.
+ // Preserve but quarantine these old records instead of guessing new authority.
+ const fields=(db.pragma("table_info(hermes_action_proposals)") as {name:string}[]).map(f=>f.name);
+ for(const col of ["intent_hash TEXT","intent_json TEXT","deadline_at INTEGER","created_at INTEGER"]){
+   if(!fields.includes(col.split(" ")[0]))db.exec("ALTER TABLE hermes_action_proposals ADD COLUMN "+col);
+ }
+ // Idempotent migration for existing PR #9 SQLite databases.
+ const runFields=(db.pragma("table_info(mission_runs)") as {name:string}[]).map(f=>f.name);
+ for(const column of ["completed_at INTEGER","completion_reason TEXT"]){
+   if(!runFields.includes(column.split(" ")[0]))db.exec("ALTER TABLE mission_runs ADD COLUMN "+column);
+ }
+ const launchByRun=(id:string):Launch|undefined=>
+   db.prepare("SELECT * FROM hermes_launches WHERE run_id=?").get(id) as Launch|undefined;
+ const missionBySession=(sessionId:string):MissionRun|undefined=>
+   db.prepare("SELECT * FROM mission_runs WHERE session_id=?"+
+     " AND state IN ('STARTING','ACTIVE','AWAITING_SIGNATURE')").get(sessionId) as MissionRun|undefined;
+ const missionByRun=(runIdValue:string):MissionRun|undefined=>
+   db.prepare("SELECT * FROM mission_runs WHERE run_id=?").get(runIdValue) as MissionRun|undefined;
+ const proposed=(id:string):Proposed|undefined=>
+   db.prepare("SELECT * FROM hermes_action_proposals WHERE action_id=?").get(id) as Proposed|undefined;
+ const latest=(id:string):Preview|undefined=>
+   db.prepare("SELECT * FROM hermes_proposal_previews WHERE proposal_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1")
+    .get(id) as Preview|undefined;
+
+ function policy(intent:{serviceId:string;operation:string;destination:string;
+   arguments:Record<string,JsonValue>;approvalContext?:ApprovalContext}):boolean{
+   try{
+     const c=intent.approvalContext;
+     if(!c||c.source!=="hermes"||c.registryTrust!=="DEMO_UNVERIFIED")return false;
+     const row=proposed(c.proposalId);
+     if(!row||row.decision!==null||!row.deadline_at||now()>=row.deadline_at||
+        row.run_id!==c.runId||row.call_id!==c.callId||
+        row.deadline_at!==c.proposalDeadlineAt)return false;
+     const run=missionByRun(row.run_id);
+     if(!run||run.state!=="AWAITING_SIGNATURE")return false;
+     const locked=readIntent(row),frozen=locked.frozenRegistrySpec;
+     if(c.intentHash!==row.intent_hash||c.registryVersion!==frozen.registryVersion||
+        c.workflowDisplayName!==frozen.title||c.workflowDescription!==frozen.humanSummary||
+        canonicalize([...c.declaredEffects])!==canonicalize([...frozen.declaredSideEffects])||
+        c.workflowConfigDigest!==frozen.workflowConfigDigest||
+        c.effectIdempotencyKey!==locked.effectIdempotencyKey)return false;
+     if(locked.serviceId!==intent.serviceId||locked.operation!==intent.operation||
+        locked.destination!==intent.destination||
+        canonicalize(locked.arguments)!==canonicalize(intent.arguments))return false;
+     // Changing the local registry while a proposal is pending invalidates
+     // approval instead of silently displaying or executing a different meaning.
+     return canonicalize(freezeRegistry(intent))===canonicalize(frozen);
+   }catch{return false;}
+ }
+ function enforcer(deviceId:string):ActionBrokerEnforcer{
+   const device=devices.getDevice(deviceId);
+   if(!device||device.revoked)fail("DEVICE_REVOKED");
+   return new ActionBrokerEnforcer(brokerStore,new Map([[deviceId,device]]),
+     {dispatch:async(e)=>({confirmedReceipt:"DEMO_ONLY_NO_EFFECT:"+actionDigest(e)})},
+     policy,now);
+ }
+ function authorizedPlugin(req:FastifyRequest):void{
+   if(!validBridgeBearer(req.headers.authorization,options.proposalKey))fail("HERMES_PLUGIN_AUTH");
+ }
+ function owned(proposalId:string,who:DeviceIdentity):Proposed{
+   const row=proposed(proposalId);
+   if(!row||row.owner_id!==who.ownerId||row.device_id!==who.deviceId)fail("PROPOSAL_NOT_OWNED");
+   if(!row.deadline_at||!row.intent_json||!row.intent_hash)fail("LEGACY_PROPOSAL_QUARANTINED");
+   const run=launchByRun(row.run_id);
+   if(!run||run.owner_id!==who.ownerId||run.device_id!==who.deviceId)fail("RUN_NOT_OWNED");
+   if(missionByRun(row.run_id)?.state!=="AWAITING_SIGNATURE")fail("RUN_NOT_AWAITING_SIGNATURE");
+   readIntent(row);return row;
+ }
+ function currentPreview(row:Proposed):{preview:Preview;envelope:ActionEnvelope;state:string;receipt?:string}|undefined{
+   const preview=latest(row.action_id);
+   if(!preview)return;
+   const record=brokerStore.find(preview.broker_action_id);
+   if(!record||record.envelope.approvalContext?.proposalId!==row.action_id||
+      record.envelope.approvalContext?.runId!==row.run_id||
+      record.envelope.approvalContext?.callId!==row.call_id||
+      record.envelope.approvalContext?.intentHash!==row.intent_hash)fail("PREVIEW_TAMPERED");
+   return {preview,envelope:record.envelope,state:record.status,receipt:record.receipt};
+ }
+ function completeDemo(row:Proposed,receipt:string,envelope:ActionEnvelope):void{
+   // Repair a crash after broker confirmed but before projection/outbox update.
+   if(receipt!=="DEMO_ONLY_NO_EFFECT:"+actionDigest(envelope))fail("BROKER_RECEIPT_MISMATCH");
+   db.transaction(()=>{
+     db.prepare("UPDATE hermes_action_proposals SET decision='DEMO_VERIFIED' "+
+       "WHERE action_id=? AND decision IS NULL").run(row.action_id);
+     db.prepare("INSERT OR IGNORE INTO hermes_continuation_outbox"+
+       "(proposal_id,run_id,outcome,receipt_digest,created_at) VALUES(?,?,?,?,?)")
+       .run(row.action_id,row.run_id,"DEMO_VERIFIED",sha(receipt),now());
+   })();
+ }
+ function proposalStatus(row:Proposed):string{
+   if(!row.intent_json||!row.deadline_at||!row.intent_hash)return "LEGACY_QUARANTINED";
+   if(missionByRun(row.run_id)?.state==="REVOKED")return "RUN_REVOKED";
+   if(row.decision==="REJECTED")return "REJECTED";
+   const curr=currentPreview(row);
+   if(curr?.state==="COMPLETED"){
+     if(!curr.receipt)return "OUTCOME_UNKNOWN";
+     completeDemo(row,curr.receipt,curr.envelope);
+     return "DEMO_VERIFIED_NO_EFFECT";
+   }
+   if(row.decision==="DEMO_VERIFIED")return "DEMO_VERIFIED_NO_EFFECT";
+   if(curr&&(curr.state==="EXECUTING"||curr.state==="UNKNOWN"))return "OUTCOME_UNKNOWN";
+   if(now()>=row.deadline_at)return "EXPIRED";
+   try{
+     const locked=readIntent(row);
+     if(canonicalize(freezeRegistry(locked))!==
+        canonicalize(locked.frozenRegistrySpec))return "REGISTRY_CHANGED";
+   }catch{return "REGISTRY_CHANGED";}
+   return "PENDING_USER_SIGNATURE_ON_IPHONE";
+ }
+ /**
+  * Releases a session only when Hermes has *confirmed* the worker is terminal.
+  * Phone APPROVE/REJECT alone is NOT proof the worker stopped executing.
+  * A pending/unknown approval keeps its lease and must be resolved separately.
+  */
+ function settleTerminalWorker(runIdValue:string,status:unknown):{state:string;released:boolean}{
+   const kind=typeof status==="string"?status.toLowerCase():"";
+   if(!["completed","failed","cancelled","canceled","interrupted","stopped"].includes(kind))
+     return {state:missionByRun(runIdValue)?.state??"UNKNOWN",released:false};
+   return db.transaction(()=>{
+     const run=missionByRun(runIdValue);
+     if(!run)return {state:"UNKNOWN",released:false};
+     if(run.state==="COMPLETED"||run.state==="REVOKED")
+       return {state:run.state,released:false};
+     if(run.state==="STARTING")return {state:run.state,released:false};
+     let finalState:"COMPLETED"|"REVOKED";
+     if(run.state==="AWAITING_SIGNATURE"){
+       const proposals=db.prepare("SELECT decision FROM hermes_action_proposals WHERE run_id=?")
+         .all(runIdValue) as {decision:string|null}[];
+       if(proposals.length!==1||proposals[0].decision===null)
+         return {state:run.state,released:false};
+       finalState=proposals[0].decision==="DEMO_VERIFIED"&&kind==="completed"
+         ?"COMPLETED":"REVOKED";
+     }else{
+       finalState=kind==="completed"?"COMPLETED":"REVOKED";
+     }
+     const changed=db.prepare("UPDATE mission_runs SET state=?,completed_at=?,completion_reason=?"+
+       " WHERE run_id=? AND state=?")
+       .run(finalState,now(),"HERMES_WORKER_"+kind.toUpperCase(),runIdValue,run.state);
+     if(changed.changes!==1)return {state:run.state,released:false};
+     store.audit("HERMES_MISSION_LEASE_RELEASED",{taskId:run.mission_id},{
+       runId:runIdValue,workerStatus:kind,finalState
+     });
+     return {state:finalState,released:true};
+   })();
+ }
+ // A decision may arrive after Hermes already finished. A failed status
+ // probe must NOT release the lease or claim a confirmed terminal outcome.
+ async function reconcileAfterDecision(runIdValue:string):Promise<void>{
+   try{
+     const worker=await hermes("/v1/runs/"+encodeURIComponent(runIdValue),"GET");
+     if(worker.run_id!==runIdValue)return;
+     settleTerminalWorker(runIdValue,worker.status);
+   }catch{ /* Keep lease until a later verified status check. */ }
+ }
+ function error(reply:{code:(n:number)=>{send:(v:unknown)=>unknown}},e:unknown):unknown{
+   const message=e instanceof Error?e.message:"HERMES_BRIDGE_ERROR";
+   const status=message.startsWith("HERMES_UNAVAILABLE:")?502:
+      message.startsWith("SECURITY_REJECT:")?403:409;
+   return reply.code(status).send({error:{code:"HERMES_BRIDGE_DENIED",message:message.slice(0,105)}});
+ }
+ async function hermes(path:string,method:"GET"|"POST",body?:unknown,idem?:string):Promise<Record<string,unknown>>{
+   const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),9000);
+   try{
+     if(method==="POST"&&path==="/v1/runs"&&!options.transport)
+       fail("LIVE_HERMES_RUN_START_BLOCKED_UNTIL_SANDBOX_VERIFIED");
+     const response=await transport(base+path,{method,redirect:"error",signal:ctrl.signal,
+       headers:{"Authorization":"Bearer "+options.apiKey,"Content-Type":"application/json",
+         ...(idem?{"Idempotency-Key":idem}:{})},
+       ...(body===undefined?{}:{body:JSON.stringify(body)})});
+     if(!response.ok)throw new Error("HERMES_UNAVAILABLE: HTTP_"+response.status);
+     const out=await response.json() as unknown;
+     if(!out||typeof out!=="object"||Array.isArray(out))fail("INVALID_HERMES_RESPONSE");
+     return out as Record<string,unknown>;
+   }catch(e){
+     if(e instanceof Error&&(/^(SECURITY_REJECT|HERMES_UNAVAILABLE):/.test(e.message)))throw e;
+     throw new Error("HERMES_UNAVAILABLE: REQUEST_FAILED");
+   }finally{clearTimeout(timer);}
+ }
+ app.post("/v1/hermes/runs",async(req,reply)=>{
+   try{
+     const who=deviceOwner(req);
+     const b=req.body as {requestId?:unknown;conversationId?:unknown;input?:unknown}|null;
+     if(!id(b?.requestId)||!id(b?.conversationId)||
+       typeof b?.input!=="string"||!b.input.trim()||b.input.length>4000)fail("INVALID_RUN_REQUEST");
+     // Check BEFORE durable reservation: blocked live start must not strand a run.
+     if(!options.transport)fail("LIVE_HERMES_RUN_START_BLOCKED_UNTIL_SANDBOX_VERIFIED");
+     const digest=sha(b.input);
+     const previous=db.prepare("SELECT * FROM hermes_launches WHERE request_id=?").get(b.requestId) as Launch|undefined;
+     if(previous){
+       if(previous.owner_id!==who.ownerId||previous.device_id!==who.deviceId||
+          previous.conversation_id!==b.conversationId||previous.input_digest!==digest)fail("RUN_REQUEST_CONFLICT");
+       if(!previous.run_id)fail("RUN_START_OUTCOME_UNKNOWN_RECONCILE_MANUALLY");
+       if(missionByRun(previous.run_id)?.state==="REVOKED")fail("RUN_REVOKED");
+       return {mode:"DEMO_NO_EXECUTION",missionId:previous.mission_id,runId:previous.run_id,replayed:true};
+     }
+     // A previous Hermes worker may have finished since the last status poll.
+     // Reconcile its authenticated terminal status before reserving the same
+     // conversation again. Never infer completion from a timeout or missing reply.
+     const preceding=missionBySession(b.conversationId);
+     if(preceding?.run_id){
+       try{
+         const status=await hermes("/v1/runs/"+encodeURIComponent(preceding.run_id),"GET");
+         if(status.run_id===preceding.run_id)
+           settleTerminalWorker(preceding.run_id,status.status);
+       }catch{ /* Unknown outcome: retain the existing unique session lease. */ }
+     }
+     const missionId=randomUUID();
+     db.transaction(()=>{
+       devices.claimConversation(b.conversationId as string,who.ownerId);
+       store.ensureConversation(b.conversationId as string);
+       db.prepare("INSERT INTO hermes_launches"+
+         "(mission_id,run_id,owner_id,device_id,conversation_id,request_id,input_digest,created_at)"+
+         " VALUES(?,NULL,?,?,?,?,?,?)")
+         .run(missionId,who.ownerId,who.deviceId,b.conversationId,b.requestId,digest,now());
+       // Partial unique index reserves the session BEFORE outbound /v1/runs.
+       db.prepare("INSERT INTO mission_runs(mission_id,session_id,run_id,state,created_at)"+
+         " VALUES(?,?,NULL,'STARTING',?)").run(missionId,b.conversationId,now());
+     })();
+     const idem=sha("nexus-hermes-run-v1:"+who.ownerId+":"+b.requestId);
+     const out=await hermes("/v1/runs","POST",{input:b.input,session_id:b.conversationId},idem);
+     if(!runId(out.run_id))fail("INVALID_HERMES_RUN_ID");
+     db.transaction(()=>{
+       const bound=db.prepare("UPDATE mission_runs SET run_id=?,state='ACTIVE'"+
+         " WHERE mission_id=? AND session_id=? AND state='STARTING' AND run_id IS NULL")
+         .run(out.run_id,missionId,b.conversationId);
+       if(bound.changes!==1)fail("RUN_START_BINDING_CONFLICT");
+       const launchBound=db.prepare("UPDATE hermes_launches SET run_id=?"+
+         " WHERE mission_id=? AND run_id IS NULL").run(out.run_id,missionId);
+       if(launchBound.changes!==1)fail("RUN_LAUNCH_BINDING_CONFLICT");
+     })();
+     // Hermes may finish before the launch HTTP response returns.
+     settleTerminalWorker(out.run_id,out.status);
+     return reply.code(202).send({mode:"DEMO_NO_EXECUTION",missionId,runId:out.run_id,replayed:false});
+   }catch(e){return error(reply,e);}
+ });
+ app.get<{Params:{runId:string}}>("/v1/hermes/runs/:runId",async(req,reply)=>{
+   try{
+     const who=deviceOwner(req),row=launchByRun(req.params.runId);
+     if(!row||row.owner_id!==who.ownerId||row.device_id!==who.deviceId)fail("RUN_NOT_OWNED");
+     const out=await hermes("/v1/runs/"+encodeURIComponent(row.run_id!),"GET");
+     if(out.run_id!==row.run_id)fail("HERMES_RUN_ID_MISMATCH");
+     const settled=settleTerminalWorker(row.run_id!,out.status);
+     return {missionId:row.mission_id,runId:row.run_id,
+       workerStatus:typeof out.status==="string"?out.status:"UNKNOWN",
+       missionState:settled.state,sessionReleased:settled.released,
+       authority:"GATEWAY_FOR_ACTIONS"};
+   }catch(e){return error(reply,e);}
+ });
+ app.post("/v1/hermes/bridge/actions",async(req,reply)=>{
+   try{
+     authorizedPlugin(req);
+     // sessionId is supplied by the authenticated DEMO plugin: the HTTP body
+     // itself is NOT host attestation. Live effects remain unavailable until a
+     // local peer-verified transport attests Hermes' runtime session identity.
+     const x=parseProposal(req.body);
+     const result=db.transaction(()=>{
+       const activeRun=missionBySession(x.sessionId);
+       if(!activeRun||!activeRun.run_id)return {reason:"NO_BOUND_ACTIVE_RUN"} as const;
+       if(x.runId&&x.runId!==activeRun.run_id)return {reason:"RUN_SESSION_MISMATCH"} as const;
+       const launch=launchByRun(activeRun.run_id);
+       if(!launch||launch.mission_id!==activeRun.mission_id||
+          launch.conversation_id!==x.sessionId)return {reason:"RUN_SESSION_BINDING_MISMATCH"} as const;
+
+       // Idempotency is checked BEFORE reading the current workflow registry.
+       // A definition change cannot turn a legitimate retry into a false
+       // tampering/revocation verdict.
+       const found=db.prepare("SELECT * FROM hermes_action_proposals WHERE run_id=? AND call_id=?")
+         .get(activeRun.run_id,x.callId) as Proposed|undefined;
+       if(found){
+         const locked=readIntent(found);
+         const sameCall=locked.serviceId===x.serviceId&&locked.operation===x.operation&&
+           locked.destination===x.destination&&
+           canonicalize(locked.arguments)===canonicalize(x.arguments);
+         if(!sameCall){
+           db.prepare("UPDATE mission_runs SET state='REVOKED' WHERE run_id=?"+
+             " AND state IN ('ACTIVE','AWAITING_SIGNATURE')").run(activeRun.run_id);
+           store.audit("HERMES_CALL_ID_REUSED_WITH_DIFFERENT_INTENT",{
+             taskId:activeRun.mission_id,actionId:found.action_id
+           },{runId:activeRun.run_id,callId:x.callId,mode:"DEMO_REVOKED"});
+           return {reason:"CALL_ID_INTENT_MISMATCH_RUN_REVOKED"} as const;
+         }
+         return {proposalId:found.action_id,deadlineAt:found.deadline_at,replayed:true} as const;
+       }
+
+       // Strict single pending proposal: a second parallel call in this run is
+       // denied even if it was emitted in the very same model turn.
+       if(activeRun.state!=="ACTIVE")return {reason:"RUN_ALREADY_AWAITING_SIGNATURE"} as const;
+       const frozen=freezeRegistry(x);
+       const proposalId=randomUUID(),createdAt=now(),deadlineAt=createdAt+PROPOSAL_TTL_MS;
+       const locked:LockedActionIntent={
+         proposalId,missionId:activeRun.mission_id,runId:activeRun.run_id,
+         callId:x.callId,ownerId:launch.owner_id,deviceId:launch.device_id,
+         effectIdempotencyKey:"nexus_"+proposalId,
+         serviceId:x.serviceId,operation:x.operation,destination:x.destination,
+         arguments:x.arguments,frozenRegistrySpec:frozen,
+         proposalCreatedAt:createdAt,proposalDeadlineAt:deadlineAt
+       };
+       const intentHash=computeIntentHash(locked);
+       const reserved=db.prepare("UPDATE mission_runs SET proposals_count=proposals_count+1,"+
+         " state='AWAITING_SIGNATURE' WHERE run_id=? AND session_id=? AND state='ACTIVE'"+
+         " AND proposals_count < max_proposals").run(activeRun.run_id,x.sessionId);
+       if(reserved.changes!==1)return {reason:"RUN_PROPOSAL_LIMIT_OR_RACE"} as const;
+       db.prepare("INSERT INTO hermes_action_proposals"+
+         "(action_id,run_id,call_id,owner_id,device_id,payload_digest,intent_hash,"+
+         "decision,intent_json,deadline_at,created_at)"+
+         " VALUES(?,?,?,?,?,?,?,NULL,?,?,?)")
+         .run(proposalId,activeRun.run_id,x.callId,launch.owner_id,launch.device_id,
+           intentHash,intentHash,canonicalize(locked),deadlineAt,createdAt);
+       store.audit("HERMES_PROPOSAL_RECORDED",{taskId:activeRun.mission_id,actionId:proposalId},
+         {runId:activeRun.run_id,sessionId:x.sessionId,callId:x.callId,
+           intentHash,deadlineAt,mode:"DEMO_ONLY"});
+       return {proposalId,deadlineAt,replayed:false} as const;
+     })();
+     if("reason" in result&&typeof result.reason==="string")fail(result.reason);
+     if(!("proposalId" in result)||typeof result.proposalId!=="string")
+       fail("PROPOSAL_NOT_ACCEPTED");
+     const row=proposed(result.proposalId);
+     if(!row)fail("PROPOSAL_RECORD_NOT_FOUND");
+     // The response may be lost; replaying the same call recovers this ID.
+     return reply.code(202).send({actionId:result.proposalId,proposalId:result.proposalId,
+       status:proposalStatus(row),deadlineAt:result.deadlineAt,
+       intentHash:row.intent_hash,execution:"NONE",replayed:result.replayed});
+   }catch(e){return error(reply,e);}
+ });
+ app.get<{Params:{actionId:string}}>("/v1/hermes/bridge/actions/:actionId",async(req,reply)=>{
+   try{
+     authorizedPlugin(req);
+     const row=proposed(req.params.actionId);
+     if(!row)fail("UNKNOWN_PROPOSAL");
+     const status=proposalStatus(row);
+     return {actionId:row.action_id,status,execution:"NONE",
+       deadlineAt:row.deadline_at,continuationMode:"ASYNC_POLL_ONLY_NO_AUTO_RESUME"};
+   }catch(e){return error(reply,e);}
+ });
+ app.get("/v1/hermes/approvals",async(req,reply)=>{
+   try{
+     const who=deviceOwner(req);
+     const rows=db.prepare("SELECT * FROM hermes_action_proposals WHERE owner_id=? AND device_id=?"+
+       " AND decision IS NULL ORDER BY rowid").all(who.ownerId,who.deviceId) as Proposed[];
+     const items=rows.flatMap(r=>{
+       if(proposalStatus(r)!=="PENDING_USER_SIGNATURE_ON_IPHONE")return [];
+       const locked=readIntent(r),workflow=locked.frozenRegistrySpec;
+       return [{actionId:r.action_id,proposalId:r.action_id,runId:r.run_id,
+         mode:"DEMO_NO_EXECUTION",deadlineAt:r.deadline_at,intentHash:r.intent_hash,
+         displayName:workflow.title,description:workflow.humanSummary,
+         declaredEffects:workflow.declaredSideEffects,
+         destination:locked.destination,operation:locked.operation}];
+     });
+     return {items};
+   }catch(e){return error(reply,e);}
+ });
+ app.post<{Params:{actionId:string}}>("/v1/hermes/approvals/:actionId/preview",async(req,reply)=>{
+   try{
+     const who=deviceOwner(req),row=owned(req.params.actionId,who);
+     if(proposalStatus(row)!=="PENDING_USER_SIGNATURE_ON_IPHONE")fail("PROPOSAL_NOT_PENDING");
+     const prev=currentPreview(row);
+     if(prev&&prev.state==="PENDING"&&now()>=prev.envelope.issuedAt&&now()<prev.envelope.expiresAt)
+       return {mode:"DEMO_NO_EXECUTION",proposalId:row.action_id,
+         envelope:prev.envelope,canonicalPayloadHash:prev.envelope.canonicalPayloadHash,
+         digest:actionDigest(prev.envelope),deadlineAt:row.deadline_at,reused:true};
+     const locked=readIntent(row),entry=locked.frozenRegistrySpec;
+     const launch=launchByRun(row.run_id);
+     if(!launch||!row.deadline_at||!row.intent_hash)fail("UNREGISTERED_RUN");
+     const context:ApprovalContext={
+       source:"hermes",proposalId:row.action_id,intentHash:row.intent_hash,
+       runId:row.run_id,callId:row.call_id,
+       registryVersion:entry.registryVersion,registryTrust:entry.registryTrust,
+       workflowDisplayName:entry.title,workflowDescription:entry.humanSummary,
+       declaredEffects:[...entry.declaredSideEffects],
+       workflowConfigDigest:entry.workflowConfigDigest,
+       effectIdempotencyKey:locked.effectIdempotencyKey,proposalDeadlineAt:row.deadline_at
+     };
+     const envelope=db.transaction(()=>{
+       const issued=enforcer(row.device_id).issue({
+         taskId:launch.mission_id,ownerId:row.owner_id,deviceId:row.device_id,
+         serviceId:locked.serviceId,operation:locked.operation,
+         destination:locked.destination,arguments:locked.arguments,
+         policyVersion:"hermes-demo-no-effect-v2",
+         ttlMs:Math.min(SIGNATURE_TTL_MS,row.deadline_at!-now()),approvalContext:context
+       });
+       db.prepare("INSERT INTO hermes_proposal_previews(proposal_id,broker_action_id,created_at) VALUES(?,?,?)")
+         .run(row.action_id,issued.actionId,now());
+       return issued;
+     })();
+     store.audit("HERMES_APPROVAL_PREVIEW",{taskId:launch.mission_id,actionId:row.action_id},
+       {envelopeActionId:envelope.actionId,intentHash:row.intent_hash,
+         signingEnvelopeHash:envelope.canonicalPayloadHash,mode:"DEMO_ONLY"});
+     return reply.code(201).send({mode:"DEMO_NO_EXECUTION",proposalId:row.action_id,
+       envelope,canonicalPayloadHash:envelope.canonicalPayloadHash,
+       digest:actionDigest(envelope),deadlineAt:row.deadline_at,reused:false});
+   }catch(e){return error(reply,e);}
+ });
+ app.post<{Params:{actionId:string}}>("/v1/hermes/approvals/:actionId/reject",async(req,reply)=>{
+   try{
+     const who=deviceOwner(req),row=owned(req.params.actionId,who);
+     if(proposalStatus(row)!=="PENDING_USER_SIGNATURE_ON_IPHONE")fail("PROPOSAL_NOT_PENDING");
+     const prev=currentPreview(row);
+     if(prev&&prev.state!=="PENDING")fail("PROPOSAL_OUTCOME_UNCERTAIN");
+     db.transaction(()=>{
+       const result=db.prepare("UPDATE hermes_action_proposals SET decision='REJECTED'"+
+         " WHERE action_id=? AND decision IS NULL").run(row.action_id);
+       if(result.changes!==1)fail("PROPOSAL_ALREADY_DECIDED");
+       db.prepare("INSERT OR IGNORE INTO hermes_continuation_outbox"+
+         "(proposal_id,run_id,outcome,receipt_digest,created_at) VALUES(?,?,?,?,?)")
+         .run(row.action_id,row.run_id,"REJECTED",null,now());
+     })();
+     // Do not keep the iPhone approval HTTP request open for a Hermes status probe.
+     void reconcileAfterDecision(row.run_id);
+     return {status:"REJECTED",execution:"NONE"};
+   }catch(e){return error(reply,e);}
+ });
+ app.post<{Params:{actionId:string}}>("/v1/hermes/approvals/:actionId/approve",async(req,reply)=>{
+   try{
+     const who=deviceOwner(req),row=owned(req.params.actionId,who);
+     if(proposalStatus(row)!=="PENDING_USER_SIGNATURE_ON_IPHONE")fail("PROPOSAL_NOT_PENDING");
+     const prev=currentPreview(row);
+     if(!prev||prev.state!=="PENDING"||now()>=prev.envelope.expiresAt)fail("PREVIEW_EXPIRED");
+     const signature=(req.body as {signatureDerBase64?:unknown}|null)?.signatureDerBase64;
+     if(typeof signature!=="string")fail("SIGNATURE_REQUIRED");
+     const result=await enforcer(who.deviceId).executeOrReject({
+       actionId:prev.envelope.actionId,deviceId:who.deviceId,signatureDerBase64:signature
+     });
+     completeDemo(row,result.receipt,prev.envelope);
+     // Do not keep the iPhone approval HTTP request open for a Hermes status probe.
+     void reconcileAfterDecision(row.run_id);
+     const run=launchByRun(row.run_id);
+     store.audit("HERMES_APPROVAL_DEMO_VERIFIED",{
+       taskId:run?.mission_id??null,actionId:row.action_id
+     },{digest:actionDigest(prev.envelope),canonicalPayloadHash:prev.envelope.canonicalPayloadHash,
+       effectIdempotencyKey:prev.envelope.approvalContext?.effectIdempotencyKey,
+       mode:"DEMO_ONLY_NO_EFFECT"});
+     return {status:"DEMO_VERIFIED_NO_EFFECT",execution:"NONE",receipt:result.receipt};
+   }catch(e){return error(reply,e);}
+ });
+}

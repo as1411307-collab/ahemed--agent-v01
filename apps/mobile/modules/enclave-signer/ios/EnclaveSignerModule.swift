@@ -1,12 +1,12 @@
 import ExpoModulesCore
 import CryptoKit
-import LocalAuthentication
 import Security
 
 /// Unverified iOS/Xcode reference module. P-256 proof != remote hardware attestation.
 public class EnclaveSignerModule: Module {
   private let service = "app.ahmed.agent.enclave-signer"
-  private let account = "action-approval-key-v1"
+  // v1 remains untouched to prevent irreversible lockout during re-enrollment.
+  private let account = "action-approval-key-v2-silent"
   private let prefix = "AHMED-ACTION-APPROVAL-V1\n"
 
   public func definition() -> ModuleDefinition {
@@ -27,11 +27,7 @@ public class EnclaveSignerModule: Module {
           userInfo: [NSLocalizedDescriptionKey: "Invalid device challenge"])
       }
       let encoded = try self.loadOrCreateRepresentation()
-      let auth = LAContext()
-      auth.localizedReason = "Authenticate Ahmed Agent device"
-      let key = try SecureEnclave.P256.Signing.PrivateKey(
-        dataRepresentation: encoded, authenticationContext: auth
-      )
+      let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: encoded)
       return try key.signature(for: Data(bytes.utf8)).derRepresentation.base64EncodedString()
     }
     AsyncFunction("signApprovalBytes") { (bytes: String) throws -> String in
@@ -40,11 +36,7 @@ public class EnclaveSignerModule: Module {
           userInfo: [NSLocalizedDescriptionKey: "Invalid approval envelope"])
       }
       let encoded = try self.loadOrCreateRepresentation()
-      let auth = LAContext()
-      auth.localizedReason = "Confirm an Ahmed Agent action"
-      let key = try SecureEnclave.P256.Signing.PrivateKey(
-        dataRepresentation: encoded, authenticationContext: auth
-      )
+      let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: encoded)
       return try key.signature(for: Data(bytes.utf8)).derRepresentation.base64EncodedString()
     }
   }
@@ -74,7 +66,7 @@ public class EnclaveSignerModule: Module {
     var error: Unmanaged<CFError>?
     guard let access = SecAccessControlCreateWithFlags(
       nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-      [.privateKeyUsage, .userPresence], &error
+      [.privateKeyUsage], &error
     ) else {
       throw error?.takeRetainedValue() as Error? ??
         NSError(domain: "AHMED_ENCLAVE", code: 500)

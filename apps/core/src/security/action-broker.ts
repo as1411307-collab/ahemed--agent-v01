@@ -1,6 +1,59 @@
 import {randomUUID, randomBytes, createHash, verify as verifySignature} from 'node:crypto';
 import {canonicalize, type JsonValue} from './canonical.js';
 
+/** Snapshot recorded before any phone preview. Never reconstructed from the current registry. */
+export interface FrozenRegistrySpec {
+  readonly registryVersion: string;
+  readonly title: string;
+  readonly humanSummary: string;
+  readonly declaredSideEffects: readonly string[];
+  readonly riskLevel: 'L0' | 'L1' | 'L2' | 'L3';
+  readonly allowedKeys: readonly string[];
+  readonly workflowConfigDigest: string;
+  readonly registryTrust: 'DEMO_UNVERIFIED';
+}
+
+export interface LockedActionIntent {
+  readonly proposalId: string;
+  readonly missionId: string;
+  readonly runId: string;
+  readonly callId: string;
+  readonly ownerId: string;
+  readonly deviceId: string;
+  readonly effectIdempotencyKey: string;
+  readonly serviceId: string;
+  readonly operation: string;
+  readonly destination: string;
+  readonly arguments: Record<string, JsonValue>;
+  readonly frozenRegistrySpec: FrozenRegistrySpec;
+  readonly proposalCreatedAt: number;
+  readonly proposalDeadlineAt: number;
+}
+
+/** Stable over the proposal lifetime; distinct from a renewable signing preview. */
+export function computeIntentHash(intent: LockedActionIntent): string {
+  return createHash('sha256')
+    .update('AHMED-LOCKED-INTENT-V1\n' + canonicalize(intent), 'utf8').digest('hex');
+}
+
+export interface ApprovalContext {
+  readonly source: 'hermes';
+  readonly proposalId: string;
+  /** Stable commitment to the database-owned LockedActionIntent. */
+  readonly intentHash: string;
+  readonly runId: string;
+  readonly callId: string;
+  // Registry data is resolved by Gateway, NEVER supplied by the model.
+  readonly registryVersion: string;
+  readonly workflowDisplayName: string;
+  readonly workflowDescription: string;
+  readonly declaredEffects: readonly string[];
+  readonly workflowConfigDigest: string;
+  readonly effectIdempotencyKey: string;
+  readonly proposalDeadlineAt: number;
+  readonly registryTrust: 'DEMO_UNVERIFIED';
+}
+
 export interface ActionEnvelope {
   readonly type: 'ahmed.action.approval.v1';
   readonly audience: 'ahmed-action-broker';
@@ -9,6 +62,9 @@ export interface ActionEnvelope {
   readonly destination: string; readonly arguments: Record<string, JsonValue>;
   readonly idempotencyKey: string; readonly nonce: string;
   readonly policyVersion: string; readonly issuedAt: number; readonly expiresAt: number;
+  readonly approvalContext?: ApprovalContext;
+  /** Legacy name: SHA256 of ephemeral signing preview (including its expiry). */
+  readonly canonicalPayloadHash?: string;
 }
 export type ActionState = 'PENDING' | 'EXECUTING' | 'UNKNOWN' | 'COMPLETED';
 export interface ActionRecord {envelope: ActionEnvelope; status: ActionState; receipt?: string}
@@ -32,10 +88,21 @@ export interface ActionDispatcher {
 export type ServicePolicy = (input: {
   serviceId: string; operation: string; destination: string;
   arguments: Record<string, JsonValue>;
+  approvalContext?: ApprovalContext;
 }) => boolean;
 
 export function approvalBytes(envelope: ActionEnvelope): Buffer {
   return Buffer.from('AHMED-ACTION-APPROVAL-V1\n' + canonicalize(envelope), 'utf8');
+}
+export function computeSigningEnvelopeHash(envelope: ActionEnvelope): string {
+  // The short-lived preview includes nonce, expiry and the STABLE context.intentHash.
+  const {canonicalPayloadHash: _ignored, ...signingPreview} = envelope;
+  return createHash('sha256')
+    .update('AHMED-SIGNING-ENVELOPE-V1\n' + canonicalize(signingPreview), 'utf8').digest('hex');
+}
+/** Legacy wire field name; now explicitly the signing-envelope hash, NOT the locked intent. */
+export function canonicalPayloadHash(envelope: ActionEnvelope): string {
+  return computeSigningEnvelopeHash(envelope);
 }
 export function actionDigest(envelope: ActionEnvelope): string {
   return createHash('sha256').update(approvalBytes(envelope)).digest('hex');
@@ -60,6 +127,7 @@ export class ActionBrokerEnforcer {
     serviceId: string; operation: string; destination: string;
     arguments: Record<string, JsonValue>;
     policyVersion: string; ttlMs: number;
+    approvalContext?: ApprovalContext;
   }): ActionEnvelope {
     const device = this.devices.get(input.deviceId);
     if (!device || device.revoked || device.ownerId !== input.ownerId) throw new Error('SECURITY_REJECT: DEVICE_NOT_ENROLLED');
@@ -74,7 +142,7 @@ export class ActionBrokerEnforcer {
     if (!this.authorize(input)) throw new Error('SECURITY_REJECT: POLICY_DENIED');
     const bytes = canonicalize(input.arguments);
     if (Buffer.byteLength(bytes, 'utf8') > 65_536) throw new Error('SECURITY_REJECT: TOO_LARGE');
-    const e: ActionEnvelope = {
+    const unsigned: ActionEnvelope = {
       type: 'ahmed.action.approval.v1', audience: 'ahmed-action-broker',
       actionId: randomUUID(), taskId: input.taskId,
       ownerId: input.ownerId, deviceId: input.deviceId,
@@ -84,7 +152,10 @@ export class ActionBrokerEnforcer {
       idempotencyKey: randomUUID(), nonce: randomBytes(24).toString('base64url'),
       policyVersion: input.policyVersion, issuedAt: this.now(),
       expiresAt: this.now() + input.ttlMs,
+      ...(input.approvalContext ? {approvalContext: structuredClone(input.approvalContext)} : {}),
     };
+    const e: ActionEnvelope = input.approvalContext
+      ? {...unsigned,canonicalPayloadHash:canonicalPayloadHash(unsigned)} : unsigned;
     canonicalize(e);
     this.store.insert({envelope:e,status:'PENDING'});
     return structuredClone(e);
@@ -103,6 +174,10 @@ export class ActionBrokerEnforcer {
     }
     if (this.now() < e.issuedAt || this.now() >= e.expiresAt) {
       throw new Error('SECURITY_REJECT: EXPIRED');
+    }
+    if ((e.approvalContext === undefined) !== (e.canonicalPayloadHash === undefined) ||
+      (e.approvalContext && e.canonicalPayloadHash !== canonicalPayloadHash(e))) {
+      throw new Error('SECURITY_REJECT: APPROVAL_INTENT_HASH_MISMATCH');
     }
     if (!this.authorize(e)) throw new Error('SECURITY_REJECT: CURRENT_POLICY_DENIED');
     if (typeof input.signatureDerBase64 !== 'string' ||
