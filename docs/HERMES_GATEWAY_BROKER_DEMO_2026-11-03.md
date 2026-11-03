@@ -26,14 +26,14 @@ HERMES_API_SERVER_KEY=<Hermes server-only API key>
 HERMES_PROPOSAL_KEY=<distinct 32+ character random proposal-only token>
 ```
 
-Set all three or none. HTTPS required for remote Hermes, plaintext HTTP allowed only to localhost. Never bundle these in Expo or commit them.
+Set all three or none. HTTPS required for remote Hermes, plaintext HTTP allowed only to localhost. Never bundle these in Expo or commit them. **Setting these values does not enable live Hermes run creation**; the current code requires an injected test transport to create a run, protecting against native-tool bypass until an actual isolation proof and reviewed enablement patch.
 
 `HERMES_PROPOSAL_KEY` would be available only to a **trusted plugin process** in a container that has no account credentials. This demo does not implement or install that plugin; it uses an authenticated test request to prove the Gateway contract. Hermes plugin context correlation to the canonical run must be verified before production. A model-supplied run ID is NOT authentication; Gateway checks that it refers to a run it started, but per-run unforgeable plugin capabilities are a future production requirement.
 
 ## HTTP API (all fail-closed unless the bridge is configured)
 
 Phone device session endpoints:
-- `POST /v1/hermes/runs` with `{requestId,conversationId,input}` starts a Hermes `POST /v1/runs` run. The Gateway owns a `missionId`; Hermes provides only `runId`. Hermes start uses a stable idempotency header. Unknown start outcomes remain reserved (409) rather than blind retry.
+- `POST /v1/hermes/runs` with `{requestId,conversationId,input}` is an **offline-tested Hermes Runs API adapter**. Live starts are deliberately rejected until a read-only Hermes profile and OS/container tool isolation are verified. The Gateway owns a `missionId`; the mocked Hermes returns `runId`. The adapter uses a stable idempotency header. Unknown outcomes remain reserved rather than blind retries.
 - `GET /v1/hermes/runs/:runId` reads Hermes worker status, not approval authority.
 - `GET /v1/hermes/approvals` lists signed-envelope pending actions for this exact phone and owner.
 - `POST /v1/hermes/approvals/:actionId/approve` with `{signatureDerBase64}` checks the Secure Enclave signature, but returns `DEMO_VERIFIED_NO_EFFECT` with `execution:NONE`.
@@ -47,7 +47,7 @@ Test via `npm test`, `npm run typecheck`, and `npm run typecheck -w @ahmed/mobil
 
 ## Deliberate gaps, never silently enable
 
-1. Hermes plugin has not been installed or verified, so an actual Hermes tool invocation → Gateway proposal → plugin resume is **not tested**.
+1. Live Hermes run creation is **hard-disabled** in this branch, regardless of environment configuration; only mocked transport in offline tests can start a run. No production activation flag exists. Hermes plugin has not been installed or verified, so an actual Hermes tool invocation → Gateway proposal → plugin resume is **not tested**.
 2. No real outbound tool execution, no production broker process/container boundary, no n8n integration, no APNs notification, no SSE event cursor.
 3. No durable reconciliation for Hermes start responses lost after the remote worker started: the reserved mission intentionally returns unknown instead of retrying beyond Hermes' 24h idempotency retention.
 4. Demo action records use a shared SQLite database; production must isolate the credential-bearing dispatcher from the model and prove a unique effect receipt per idempotency key.
