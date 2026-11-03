@@ -1,0 +1,35 @@
+# NEXUS sandbox template, NOT installed automatically by this PR.
+# To use in an isolated Hermes profile, install nexus-proposal-guard plugin
+# and verify the effective exposed tools before enabling any live run.
+# This file deliberately contains NO API keys, endpoint credentials or tunnels.
+plugins:
+  enabled:
+    - nexus-proposal-guard
+
+# Tool Search can defer/unwrap tools, changing which pre-tool hook runs.
+# NEXUS uses a small explicit tool surface, so turn this off.
+tools:
+  tool_search:
+    enabled: off
+
+# Avoid enabling the full "hermes-api-server" preset.
+platform_toolsets:
+  api_server:
+    - search
+    - memory
+    - nexus-proposal
+
+# Defense in depth: neither delegation nor code/OS/browser tools are needed.
+# This is not a substitute for OS/container permission isolation.
+agent:
+  disabled_toolsets:
+    - delegation
+    - code_execution
+    - terminal
+    - file
+    - browser
+    - cronjob
+    - computer_use
+    - coding
+    - hermes-api-server
+    - hermes-cli
