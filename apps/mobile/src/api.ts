@@ -133,8 +133,19 @@ export function rejectSignedPreview(actionId:string):Promise<{status:'DEMO_REJEC
 
 /** Hermes v1 pilot: separate worker run and signed action inbox, never executes n8n/email. */
 export interface HermesPendingApproval {
-  actionId:string;runId:string;mode:'DEMO_NO_EXECUTION';
-  envelope:DisplayEnvelope;digest:string;
+  actionId:string;proposalId:string;runId:string;mode:'DEMO_NO_EXECUTION';
+  deadlineAt:number;displayName:string;description:string;
+  declaredEffects:string[];destination:string;operation:string;
+}
+export interface HermesApprovalPreview {
+  mode:'DEMO_NO_EXECUTION';proposalId:string;
+  envelope:DisplayEnvelope;canonicalPayloadHash:string;digest:string;
+  deadlineAt:number;reused:boolean;
+}
+export function previewHermesApproval(proposalId:string):Promise<HermesApprovalPreview>{
+  return call("/v1/hermes/approvals/"+encodeURIComponent(proposalId)+"/preview",{
+    method:"POST",headers:{"Content-Type":"application/json"},body:"{}"
+  });
 }
 export function listHermesApprovals():Promise<{items:HermesPendingApproval[]}>{
   return call("/v1/hermes/approvals");
