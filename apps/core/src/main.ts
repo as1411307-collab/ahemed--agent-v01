@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { AnthropicModelClient } from "./model.js";
 import { createCore } from "./server.js";
-import type {HermesBridgeOptions} from "./hermes-bridge.js";
 import { assessCapabilityTier, auditCredentialBoundaries } from "./security/credential-audit.js";
 
 // Secrets come from the environment only. A local .env (git-ignored) is loaded if present.
@@ -59,18 +58,10 @@ const host = process.env.HOST ?? "127.0.0.1"; // Serve iPhone through a TLS reve
 const workspaceRoot = path.resolve(process.env.WORKSPACE_ROOT ?? "./workspace");
 const dbFile = path.resolve(process.env.DB_FILE ?? "./ahmed-core.db");
 
-const hermesSettings = [process.env.HERMES_API_URL,process.env.HERMES_API_SERVER_KEY,process.env.HERMES_PROPOSAL_KEY];
-const setCount = hermesSettings.filter(v => !!v?.trim()).length;
-if(setCount !== 0 && setCount !== 3) throw new Error("HERMES_BRIDGE_CONFIG_INCOMPLETE");
-const hermesBridge: HermesBridgeOptions | undefined = setCount === 3 ? {
-  baseUrl: hermesSettings[0]!, apiKey: hermesSettings[1]!, proposalKey: hermesSettings[2]!,
-} : undefined;
-
 const core = await createCore({
   dbFile,
   workspaceRoot,
   deviceSecurity: {ownerId,pairingCode},
-  hermesBridge,
   model: new AnthropicModelClient(apiKey, modelName),
   strictCognitiveOnly: process.env.NODE_ENV === "production",
   logger: true,
