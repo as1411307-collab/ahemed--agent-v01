@@ -62,7 +62,7 @@ Select the physically connected iPhone as the run destination, Trust the Mac,
 enable iPhone Developer Mode, and use **Product > Run** (Debug).
 
 Check that generated Expo autolinking lists the `EnclaveSignerModule` and
-that Xcode compiles `CryptoKit`, `LocalAuthentication` and `Security`.
+that Xcode compiles `CryptoKit` and `Security`.
 If `EnclaveSigner` is absent, do not bypass the module with JavaScript signing.
 
 Launch Metro while Xcode Debug is running:
@@ -82,6 +82,32 @@ reviewed branch, regenerate native files, and rebuild with Xcode.
 device signing materials are stored in this repository.** Creating a project,
 prebuild instructions and CI do not establish a successful Xcode build.
 
+## PR #9 silent-signing update (no Face ID or passcode prompt)
+
+The current PR #9 version supersedes the earlier user-presence trial:
+`EnclaveSignerModule.swift` uses `action-approval-key-v2-silent` and
+`SecAccessControl.privateKeyUsage` without `userPresence`. The old v1
+Keychain record is deliberately preserved; **do not delete it before
+successful re-pairing**. The signing bytes are unchanged.
+
+After installing the new iOS build, an existing phone's new P-256 public key
+will not match the Gateway's stored v1 key. The app detects the
+`INVALID_DEVICE_PROOF` failure and shows the pairing screen. On the Mac:
+
+```bash
+cd apps/core
+npm run auth:rotate-device
+```
+
+Use the same Core database and owner ID as the running Core; if multiple
+registered devices exist pass `-- --device-id iphone-...`. Enter the newly
+printed **10-minute one-use** code on the phone. The Gateway rotates the
+existing device public key and revokes old sessions only **after** verifying
+the new Secure Enclave signature. It does **not** reset the original global
+bootstrap or allow a different device ID. The first unlock to use the app
+may still require the iPhone's normal screen unlock; the app no longer asks
+for Face ID/passcode during signing when the device is unlocked.
+
 ## Core trial setup
 
 Use `apps/core/.env.example` for server-only configuration. Generate the
@@ -96,10 +122,10 @@ only through a trusted restricted-access **HTTPS** reverse proxy. A plain
 `http://192.168.*` address is rejected by the client: pairing codes, proofs
 and session tokens must never cross unencrypted LAN HTTP.
 
-The pairing code can enroll **one device once**. Revoking it prevents future
-sessions, and it cannot be enrolled again using the consumed code. A reviewed
-local administrative device-recovery and pairing-code rotation procedure is
-still required; do not delete the action database simply to re-enroll.
+The initial bootstrap code enrolls **one device once**. The local one-time
+rotation command above re-registers an already enrolled device without
+reopening bootstrap or deleting the action database. A revoked device
+is deliberately not eligible for automatic rotation.
 
 ## Test matrix and truthful evidence
 
@@ -117,7 +143,7 @@ still required; do not delete the action database simply to re-enroll.
 | Expired approval | 403 | yes | not verified |
 | Rejected preview | 403 | yes | not verified |
 | Revoked device/session | 401/403 | yes | not verified |
-| Real Secure Enclave key & user presence | biometric/device auth | no | not verified |
+| Silent Secure Enclave signing (new v2 key) | no Face ID prompt while unlocked | no | not verified |
 | Native module links, builds and runs | Xcode successful | no | not verified |
 | External side effects | none | no-op by design | blocked |
 
