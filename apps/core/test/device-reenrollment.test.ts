@@ -13,20 +13,20 @@ const fresh=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
 const oldPem=old.publicKey.export({type:'spki',format:'pem'}).toString();
 const freshPem=fresh.publicKey.export({type:'spki',format:'pem'}).toString();
 let env:Env,db:DB,devices:DeviceSessions;
-function signature(bytes:Buffer,key:typeof old.privateKey){
-  return sign('sha256',bytes,key).toString('base64');
+function signature(bytes:Buffer,key:typeof old){
+  return sign('sha256',bytes,key.privateKey).toString('base64');
 }
 beforeEach(()=>{
   env=makeEnv();db=openDb(env.dbFile);
   devices=new DeviceSessions(db,OWNER,BOOTSTRAP,()=>env.nowMs);
 });
 afterEach(()=>{db.close();env.cleanup();});
-function enroll(code:string,pem:string,key:typeof old.privateKey,deviceId=DEVICE){
+function enroll(code:string,pem:string,key:typeof old,deviceId=DEVICE){
   const challenge=devices.enrollmentChallenge({pairingCode:code,deviceId,publicKeySpkiPem:pem});
   return devices.enroll({challengeId:challenge.challengeId,deviceId,
     signatureDerBase64:signature(deviceChallengeBytes('enroll',challenge),key)});
 }
-function session(key:typeof old.privateKey){
+function session(key:typeof old){
   const challenge=devices.sessionChallenge(DEVICE);
   return devices.openSession({challengeId:challenge.challengeId,deviceId:DEVICE,
     signatureDerBase64:signature(deviceChallengeBytes('session',challenge),key)});
