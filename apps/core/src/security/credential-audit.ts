@@ -20,6 +20,31 @@ export interface CredentialAudit {
   limitations: string[];
 }
 
+/**
+ * Local static pre-start gate only; this does NOT prove provider uptime,
+ * worker isolation, data egress controls, or a deployed service.
+ * External actions remain blocked until an independently attested broker exists.
+ */
+export type CapabilityTier = 'COGNITIVE_READ_ONLY' | 'EXTERNAL_ACTUATION';
+export interface CapabilityGate {
+  readonly tier: CapabilityTier;
+  readonly allowedToStart: boolean;
+  readonly liveProviderVerified: false;
+  readonly reason: string;
+}
+export function assessCapabilityTier(audit: CredentialAudit, tier: CapabilityTier): CapabilityGate {
+  if (!audit.passedLocalChecks) {
+    return {tier, allowedToStart: false, liveProviderVerified: false,
+      reason: 'LOCAL_CREDENTIAL_BOUNDARY_FAILED'};
+  }
+  if (tier === 'EXTERNAL_ACTUATION') {
+    return {tier, allowedToStart: false, liveProviderVerified: false,
+      reason: 'BROKER_ISOLATION_AND_EXTERNAL_EFFECTS_UNVERIFIED'};
+  }
+  return {tier, allowedToStart: true, liveProviderVerified: false,
+    reason: 'LOCAL_INVENTORY_ONLY_PROVIDER_AND_EGRESS_NOT_ATTESTED'};
+}
+
 const ACTION_KEYS = /^(?:GITHUB_TOKEN|GITHUB_PAT|GH_TOKEN|STRIPE_SECRET(?:_KEY)?|N8N_WEBHOOK_SECRET|N8N_API_KEY|MCP_[A-Z0-9_]*(?:TOKEN|SECRET)|EXTERNAL_[A-Z0-9_]*(?:KEY|TOKEN|SECRET))$/i;
 const MODEL_KEYS = /^(?:OPENAI_API_KEY|ANTHROPIC_API_KEY|GEMINI_API_KEY|OLLAMA_API_KEY)$/i;
 const PUBLIC_KEYS = /^EXPO_PUBLIC_[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)$/i;
