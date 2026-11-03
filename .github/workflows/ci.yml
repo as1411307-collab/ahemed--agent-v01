@@ -36,6 +36,29 @@ jobs:
       - name: Assert Hermes guard fails closed under config and tool drift
         run: python -m unittest discover -s scripts -p 'test_hermes_runtime_guard.py' -v
 
+  hermes-runtime-upstream-probe:
+    # Exercises the actual Hermes plugin discovery and resolved tool definitions.
+    # No model key or live Gateway, and upstream is pinned to the tested SHA.
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'feature/hermes-broker-bridge-demo-2026-11-03' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: fd267bb3242a14c33d4899cffc60ee4be816f14d
+          path: hermes-upstream
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install minimal pinned-Hermes import dependencies (no LLM credentials)
+        run: |
+          python -m pip install --disable-pip-version-check -q python-dotenv rich fire httpx requests pydantic openai tenacity ruamel.yaml packaging PyYAML aiohttp websockets uvicorn psutil cryptography snowballstemmer tiktoken
+      - name: Verify actual Hermes toolsets and deny-on-config-drift hook
+        run: python scripts/probe_hermes_runtime_guard_upstream.py hermes-upstream
+
   xcode-simulator-compile:
     # Experimental branch only. This is unsigned simulator compilation, NOT
     # Apple Developer provisioning or real Secure Enclave phone verification.
