@@ -64,7 +64,7 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     );
   `);
   const workspace = new Workspace(opts.workspaceRoot);
-  const agent = new Agent(store, workspace, opts.model, opts.approvalTtlMs ?? APPROVAL_TTL_MS);
+  const agent = new Agent(store, workspace, opts.model, opts.approvalTtlMs ?? APPROVAL_TTL_MS, !deviceSecurity);
   agent.recover();
 
   const inFlight = new Set<Promise<void>>();
