@@ -413,7 +413,9 @@ export function registerHermesBridge(p:Params):void{
            intentHash,deadlineAt,mode:"DEMO_ONLY"});
        return {proposalId,deadlineAt,replayed:false} as const;
      })();
-     if("reason" in result)fail(result.reason);
+     if("reason" in result&&typeof result.reason==="string")fail(result.reason);
+     if(!("proposalId" in result)||typeof result.proposalId!=="string")
+       fail("PROPOSAL_NOT_ACCEPTED");
      const row=proposed(result.proposalId);
      if(!row)fail("PROPOSAL_RECORD_NOT_FOUND");
      // The response may be lost; replaying the same call recovers this ID.
