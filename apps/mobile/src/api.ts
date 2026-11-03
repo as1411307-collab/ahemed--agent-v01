@@ -51,6 +51,26 @@ async function call<T>(path: string, init: RequestInit = {}, timeoutMs = 20_000)
   throw new ApiError(res.status, body?.error?.code ?? "HTTP", body?.error?.message ?? `Request failed (${res.status}).`);
 }
 
+// This is an authenticated server declaration, not a UI inference or production attestation.
+export interface CoreCapabilities {
+  schemaVersion: 1;
+  mode: "SIGNED_DEVICE_DEMO_ONLY" | "TEST_FIXTURE_ONLY";
+  features: {
+    textMessages: "MODEL_BACKED";
+    fileUploadAndRead: "WORKSPACE_SCOPED";
+    modelInputMayLeaveServer: boolean;
+    sensitiveWorkspaceActions: "BLOCKED" | "TEST_FIXTURE_ONLY";
+    signedApprovalEffects: "DEMO_NO_EFFECT";
+    hermesRuns: "LIVE_RUN_START_BLOCKED" | "INJECTED_TRANSPORT_DEMO_ONLY";
+    n8nWorkflowExecution: "NOT_CONNECTED";
+    liveVoice: "NOT_IMPLEMENTED";
+  };
+}
+
+export function getCoreCapabilities(): Promise<CoreCapabilities> {
+  return call<CoreCapabilities>("/v1/system/capabilities");
+}
+
 export interface PickedFile {
   uri: string;
   name: string;
