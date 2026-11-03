@@ -2,10 +2,25 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { AnthropicModelClient } from "./model.js";
 import { createCore } from "./server.js";
+import { auditCredentialBoundaries } from "./security/credential-audit.js";
 
 // Secrets come from the environment only. A local .env (git-ignored) is loaded if present.
 const envFile = path.resolve(".env");
 if (existsSync(envFile)) process.loadEnvFile(envFile);
+
+// Production is intentionally fail-closed until the static bearer is replaced,
+// real device enrollment is deployed and remote n8n credentials are verified.
+// Do not bypass this gate by setting a cosmetic "approved" flag.
+if (process.env.NODE_ENV === "production") {
+  const repoRoot = path.resolve(import.meta.dirname, "../../..");
+  const security = auditCredentialBoundaries(repoRoot, process.env);
+  if (!security.passedLocalChecks || !security.remoteN8nVerified) {
+    console.error("SECURITY_GATE_BLOCKED: production start denied. See docs/SECURITY_GATES_PHASE1.md.");
+    console.error(JSON.stringify({findings: security.findings, limitations: security.limitations}));
+    process.exit(78);
+  }
+}
+
 
 function required(name: string): string {
   const v = process.env[name]?.trim();
