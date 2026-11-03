@@ -395,7 +395,7 @@ export default function App() {
               : "Core capabilities unverified. Never treat a signature as proof of execution."}
           </Text>
         </View>
-        {showTasks && <TaskList tasks={tasks} />
+        {showTasks && <TaskList tasks={tasks} />}
 
         {error && (
           <View style={s.errorBar}>
