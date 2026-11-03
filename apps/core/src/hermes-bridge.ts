@@ -572,7 +572,8 @@ export function registerHermesBridge(p:Params):void{
          "(proposal_id,run_id,outcome,receipt_digest,created_at) VALUES(?,?,?,?,?)")
          .run(row.action_id,row.run_id,"REJECTED",null,now());
      })();
-     await reconcileAfterDecision(row.run_id);
+     // Do not keep the iPhone approval HTTP request open for a Hermes status probe.
+     void reconcileAfterDecision(row.run_id);
      return {status:"REJECTED",execution:"NONE"};
    }catch(e){return error(reply,e);}
  });
@@ -588,7 +589,8 @@ export function registerHermesBridge(p:Params):void{
        actionId:prev.envelope.actionId,deviceId:who.deviceId,signatureDerBase64:signature
      });
      completeDemo(row,result.receipt,prev.envelope);
-     await reconcileAfterDecision(row.run_id);
+     // Do not keep the iPhone approval HTTP request open for a Hermes status probe.
+     void reconcileAfterDecision(row.run_id);
      const run=launchByRun(row.run_id);
      store.audit("HERMES_APPROVAL_DEMO_VERIFIED",{
        taskId:run?.mission_id??null,actionId:row.action_id
