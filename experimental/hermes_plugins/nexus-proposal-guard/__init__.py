@@ -108,6 +108,13 @@ def _snapshot_runtime() -> tuple[Any, Any, Any, Any]:
         disabled_toolsets=disabled,
         quiet_mode=True,
     )
+    # The one tool that looks like an action MUST still point to our inert
+    # handler. Tool name allowlisting alone cannot detect handler replacement.
+    from tools.registry import registry
+    proposal_entry = registry.get_entry(PROPOSAL_TOOL)
+    if (proposal_entry is None or proposal_entry.toolset != "nexus-proposal"
+            or proposal_entry.handler is not _dummy_handler):
+        raise ValueError("Proposal handler was replaced or is missing")
     names = set()
     for definition in definitions:
         if not isinstance(definition, dict):
