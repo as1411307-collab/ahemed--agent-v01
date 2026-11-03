@@ -158,7 +158,7 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
       fileUploadAndRead: "WORKSPACE_SCOPED",
       modelInputMayLeaveServer: true,
       canonicalMissionLedger: "LEGACY_TASKS",
-      hermesMissionLedger: "SEPARATE_DEMO_NOT_AUTHORITATIVE",
+      hermesMissionLedger: opts.hermesBridge ? "SEPARATE_DEMO_NOT_AUTHORITATIVE" : "DISABLED_NOT_ACTIVE",
       approvalUserPresence: "NOT_ENFORCED",
       sensitiveWorkspaceActions: deviceSecurity ? "BLOCKED" : "TEST_FIXTURE_ONLY",
       signedApprovalEffects: "DEMO_NO_EFFECT",
