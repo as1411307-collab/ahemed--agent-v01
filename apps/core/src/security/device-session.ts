@@ -72,9 +72,38 @@ export class DeviceSessions {
       );
       CREATE TABLE IF NOT EXISTS security_bootstrap (single_id INTEGER PRIMARY KEY CHECK(single_id=1), used_at INTEGER);
       INSERT OR IGNORE INTO security_bootstrap(single_id,used_at) VALUES(1,NULL);
+      CREATE TABLE IF NOT EXISTS security_device_recovery (
+        code_hash TEXT PRIMARY KEY, device_id TEXT NOT NULL,
+        expires_at INTEGER NOT NULL, used_at INTEGER
+      );
     `);
+    const challengeColumns=(db.pragma('table_info(security_challenges)') as {name:string}[]).map(x=>x.name);
+    if(!challengeColumns.includes('recovery_code_hash'))
+      db.exec('ALTER TABLE security_challenges ADD COLUMN recovery_code_hash TEXT');
+
   }
-  private createChallenge(purpose: Purpose, deviceId: string, publicKeySpkiPem?: string): DeviceChallenge {
+  /**
+   * Local maintenance only. Not exposed through a Core HTTP route, LLM tool,
+   * Hermes handler or mobile API. Caller must have write access to the Core DB.
+   * The old public key and active sessions remain valid UNTIL successful re-pair.
+   */
+  issueLocalRotationCode(deviceId: string): {code:string;expiresAt:number} {
+    if(!validId(deviceId)) return reject('INVALID_DEVICE_ID');
+    const device=this.getDevice(deviceId);
+    if(!device || device.ownerId!==this.ownerId || device.revoked) return reject('DEVICE_NOT_ENROLLED');
+    const code=randomBytes(32).toString('base64url');
+    const expiresAt=this.now()+10*60_000, codeHash=digest(code).toString('hex');
+    this.db.transaction(()=>{
+      this.db.prepare('UPDATE security_device_recovery SET used_at=? WHERE device_id=? AND used_at IS NULL')
+        .run(this.now(),deviceId);
+      this.db.prepare('INSERT INTO security_device_recovery(code_hash,device_id,expires_at) VALUES(?,?,?)')
+        .run(codeHash,deviceId,expiresAt);
+    })();
+    return {code,expiresAt};
+  }
+
+  private createChallenge(purpose: Purpose, deviceId: string,
+    publicKeySpkiPem?: string, recoveryCodeHash?:string): DeviceChallenge {
     const now = this.now();
     const payload: DeviceChallenge = {
       type: purpose === 'enroll' ? 'ahmed.device.enroll.v1' : 'ahmed.device.session.v1',
@@ -82,18 +111,33 @@ export class DeviceSessions {
       nonce: randomBytes(32).toString('base64url'), issuedAt: now, expiresAt: now + 60_000,
       ...(publicKeySpkiPem === undefined ? {} : {publicKeySpkiPem}),
     };
-    this.db.prepare('INSERT INTO security_challenges(challenge_id,purpose,device_id,payload_json,expires_at) VALUES(?,?,?,?,?)')
-      .run(payload.challengeId,purpose,deviceId,canonicalize(payload),payload.expiresAt);
+    this.db.prepare('INSERT INTO security_challenges(challenge_id,purpose,device_id,payload_json,expires_at,recovery_code_hash) VALUES(?,?,?,?,?,?)')
+      .run(payload.challengeId,purpose,deviceId,canonicalize(payload),payload.expiresAt,recoveryCodeHash??null);
     return payload;
   }
   enrollmentChallenge(input: {pairingCode: unknown; deviceId: unknown; publicKeySpkiPem: unknown}): DeviceChallenge {
-    if (!this.pairingCode || typeof input.pairingCode !== 'string' ||
-        !same(this.pairingCode, input.pairingCode)) return reject('PAIRING_DENIED');
-    if (!validId(input.deviceId)) return reject('INVALID_DEVICE_ID');
-    if (this.db.prepare('SELECT used_at FROM security_bootstrap WHERE single_id=1')
-      .get() && (this.db.prepare('SELECT used_at FROM security_bootstrap WHERE single_id=1').get() as {used_at:number|null}).used_at !== null) return reject('PAIRING_CONSUMED');
-    if (this.db.prepare('SELECT 1 AS n FROM security_devices WHERE device_id=?').get(input.deviceId)) return reject('DEVICE_ALREADY_ENROLLED');
-    return this.createChallenge('enroll', input.deviceId, checkedPem(input.publicKeySpkiPem));
+    if(!validId(input.deviceId)) return reject('INVALID_DEVICE_ID');
+    if(typeof input.pairingCode!=='string'||input.pairingCode.length<24)return reject('PAIRING_DENIED');
+    const bootstrap=this.db.prepare('SELECT used_at FROM security_bootstrap WHERE single_id=1')
+      .get() as {used_at:number|null}|undefined;
+    const initial=bootstrap?.used_at===null && !!this.pairingCode &&
+      same(this.pairingCode,input.pairingCode);
+    const existing=this.getDevice(input.deviceId);
+    let recoveryCodeHash:string|undefined;
+    if(initial){
+      if(existing)return reject('DEVICE_ALREADY_ENROLLED');
+    }else{
+      const hash=digest(input.pairingCode).toString('hex');
+      const recovered=this.db.prepare('SELECT code_hash FROM security_device_recovery'+
+        ' WHERE code_hash=? AND device_id=? AND used_at IS NULL AND expires_at>?')
+        .get(hash,input.deviceId,this.now()) as {code_hash:string}|undefined;
+      if(!recovered||!existing||existing.revoked||existing.ownerId!==this.ownerId)
+        return reject('PAIRING_DENIED');
+      recoveryCodeHash=recovered.code_hash;
+    }
+    const newPem=checkedPem(input.publicKeySpkiPem);
+    if(recoveryCodeHash&&existing?.publicKeySpkiPem===newPem)return reject('KEY_NOT_ROTATED');
+    return this.createChallenge('enroll',input.deviceId,newPem,recoveryCodeHash);
   }
   private consumeChallenge(purpose: Purpose, challengeId: unknown, deviceId: unknown): DeviceChallenge {
     if (!validId(challengeId) || !validId(deviceId)) return reject('INVALID_CHALLENGE');
@@ -110,14 +154,33 @@ export class DeviceSessions {
   }
   enroll(input: {challengeId: unknown; deviceId: unknown; signatureDerBase64: unknown}): DeviceIdentity {
     return this.db.transaction(() => {
+      const stored=this.db.prepare('SELECT recovery_code_hash FROM security_challenges'+
+        ' WHERE challenge_id=? AND purpose=\'enroll\' AND device_id=?')
+        .get(input.challengeId,input.deviceId) as {recovery_code_hash:string|null}|undefined;
       const payload = this.consumeChallenge('enroll', input.challengeId, input.deviceId);
       const pem = payload.publicKeySpkiPem;
       if (!pem || !verifyP256(pem, deviceChallengeBytes('enroll', payload), input.signatureDerBase64)) return reject('INVALID_SIGNATURE');
-      const spent = this.db.prepare('UPDATE security_bootstrap SET used_at=? WHERE single_id=1 AND used_at IS NULL')
-        .run(this.now());
-      if (spent.changes !== 1) return reject('PAIRING_CONSUMED');
-      this.db.prepare('INSERT INTO security_devices(device_id,owner_id,public_key_pem,created_at) VALUES(?,?,?,?)')
-        .run(input.deviceId,this.ownerId,pem,this.now());
+      if(stored?.recovery_code_hash){
+        const spent=this.db.prepare('UPDATE security_device_recovery SET used_at=?'+
+          ' WHERE code_hash=? AND device_id=? AND used_at IS NULL AND expires_at>?')
+          .run(this.now(),stored.recovery_code_hash,input.deviceId,this.now());
+        if(spent.changes!==1)return reject('RECOVERY_EXPIRED_OR_USED');
+        const replaced=this.db.prepare('UPDATE security_devices SET public_key_pem=?'+
+          ' WHERE device_id=? AND owner_id=? AND revoked_at IS NULL AND public_key_pem<>?')
+          .run(pem,input.deviceId,this.ownerId,pem);
+        if(replaced.changes!==1)return reject('DEVICE_ROTATION_DENIED');
+        // All previously issued sessions become invalid only AFTER proof of
+        // possession of the new Secure Enclave key has been verified.
+        this.db.prepare('UPDATE security_sessions SET revoked_at=?'+
+          ' WHERE device_id=? AND owner_id=? AND revoked_at IS NULL')
+          .run(this.now(),input.deviceId,this.ownerId);
+      }else{
+        const spent=this.db.prepare('UPDATE security_bootstrap SET used_at=? WHERE single_id=1 AND used_at IS NULL')
+          .run(this.now());
+        if (spent.changes !== 1) return reject('PAIRING_CONSUMED');
+        this.db.prepare('INSERT INTO security_devices(device_id,owner_id,public_key_pem,created_at) VALUES(?,?,?,?)')
+          .run(input.deviceId,this.ownerId,pem,this.now());
+      }
       return {ownerId:this.ownerId,deviceId:input.deviceId as string};
     })();
   }
