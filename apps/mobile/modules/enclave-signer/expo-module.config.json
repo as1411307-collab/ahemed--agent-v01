@@ -1,1 +1,10 @@
-{"platforms":["ios"],"ios":{"modules":["EnclaveSignerModule"]}}
+{
+  "platforms": [
+    "ios"
+  ],
+  "apple": {
+    "modules": [
+      "EnclaveSignerModule"
+    ]
+  }
+}
