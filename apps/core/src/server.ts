@@ -4,7 +4,7 @@ import {ActionBrokerEnforcer, actionDigest, approvalBytes, type ActionEnvelope} 
 import {SqliteActionStore} from "./security/sqlite-action-store.js";
 import {DeviceSessions, type DeviceIdentity} from "./security/device-session.js";
 import {canonicalize, type JsonValue} from "./security/canonical.js";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import multipart from "@fastify/multipart";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -331,7 +331,11 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
       return reject(400, "input_type 'file' requires a 'file' part.", request.request_id);
     }
 
-    // Safe retry: the same request_id never creates a second task.
+    // Exact-once task creation is NOT permission to reuse an id for new input.
+    if (request.input_type === "text" && upload)
+      return reject(400, "Text requests must not include an uploaded file.", request.request_id);
+    if (request.input_type === "file" && !upload)
+      return reject(400, "File requests must contain the file bytes.", request.request_id);
     const existing = store.getTaskByRequestId(request.request_id);
     if (existing) {
       if (deviceSecurity && !deviceSecurity.ownsTask(existing.id,owner(req).ownerId))
@@ -339,6 +343,26 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
       if (existing.conversation_id !== request.conversation_id) {
         return reply.code(409).send(errorResponse("CONFLICT", "request_id already used in another conversation."));
       }
+      const previous = JSON.parse(existing.attachments) as Attachment[];
+      const sameShape = existing.user_message === request.message &&
+        (request.input_type === "file") === (previous.length === 1);
+      let sameFile = request.input_type === "text";
+      if (request.input_type === "file" && previous.length === 1 && upload) {
+        const old = previous[0];
+        const currentName = (typeof request.attachments[0]?.name === "string" &&
+          request.attachments[0].name.trim()) || upload.filename || "upload";
+        if (old.workspace_path && old.name === currentName &&
+            old.size_bytes === upload.buffer.length) {
+          try {
+            const onDisk = readFileSync(workspace.resolve(old.workspace_path));
+            sameFile = createHash("sha256").update(onDisk).digest("hex") ===
+              createHash("sha256").update(upload.buffer).digest("hex");
+          } catch { sameFile = false; }
+        }
+      }
+      if (!sameShape || !sameFile)
+        return reply.code(409).send(errorResponse("CONFLICT",
+          "request_id was reused with different or unverifiable content."));
       return reply.code(200).send(taskResponse(store, existing));
     }
 
