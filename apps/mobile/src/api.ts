@@ -54,11 +54,14 @@ async function call<T>(path: string, init: RequestInit = {}, timeoutMs = 20_000)
 // This is an authenticated server declaration, not a UI inference or production attestation.
 export interface CoreCapabilities {
   schemaVersion: 1;
-  mode: "SIGNED_DEVICE_DEMO_ONLY" | "TEST_FIXTURE_ONLY";
+  mode: "COGNITIVE_READ_ONLY_NOT_ATTESTED" | "SIGNED_DEVICE_DEMO_ONLY" | "TEST_FIXTURE_ONLY";
   features: {
-    textMessages: "MODEL_BACKED";
+    textMessages: "MODEL_ADAPTER_CONFIGURED_NOT_PROVEN";
     fileUploadAndRead: "WORKSPACE_SCOPED";
     modelInputMayLeaveServer: boolean;
+    canonicalMissionLedger: "LEGACY_TASKS";
+    hermesMissionLedger: "SEPARATE_DEMO_NOT_AUTHORITATIVE";
+    approvalUserPresence: "NOT_ENFORCED";
     sensitiveWorkspaceActions: "BLOCKED" | "TEST_FIXTURE_ONLY";
     signedApprovalEffects: "DEMO_NO_EFFECT";
     hermesRuns: "LIVE_RUN_START_BLOCKED" | "INJECTED_TRANSPORT_DEMO_ONLY";
