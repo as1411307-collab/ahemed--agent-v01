@@ -1,3 +1,34 @@
+# NEXUS ONE — Verified repair status (3 November 2026)
+
+**Scope:** `repair/server-first-truth-2026-11-03` is a review-only repair branch. It has NOT been merged to `main`, deployed to a VPS, built on an iPhone or validated by running tests in this repair session.
+
+## Truths from repository inspection
+
+- `main` already contains merged PR #7, #8 and #9. PR #5 (`nexus/parallel-foundation`) remains unmerged and MUST NOT be merged wholesale to resolve the separate task ledgers.
+- `tasks` is the active canonical ledger for the current legacy message route. `mission_runs` is a separate Hermes demo/session-lease projection, NOT a unified replacement. `nexus_missions` is only in PR #5. No table was dropped or migrated.
+- A normal production Hermes run is still hard-blocked; no n8n workflow execution, authenticated callback, or external broker isolation has been demonstrated.
+- Signed iPhone approval receipts remain DEMO / NO EFFECT. The silent device key does not enforce fresh biometric/user presence. A real high-risk approval scheme requires a separate enrolled policy-bound key and independent broker verification.
+- Production can be configured for `CORE_PRODUCTION_TIER=COGNITIVE_READ_ONLY` only if local credential inventory passes, Core binds to loopback, no Hermes bridge is configured and sensitive tools are disallowed by the strict runtime flag. External-action tier is unconditionally denied. This is an eligibility check, NOT deployment/network/provider attestation.
+- In the strict cognitive tier, the model can only request reads of uploaded attachments belonging to the same conversation up to that task; arbitrary workspace reads and write tools are denied. User-provided text and allowed attachment contents can still leave the host for Anthropic.
+- The iPhone now obtains an authenticated capability declaration, refreshes it while active, and no longer offers a blocked Hermes run button. A successful capability response is NOT proof of model execution or external effects.
+- Core environment template escaped newline literals were repaired on this branch.
+
+## Remaining P0/P1 gaps: NOT fixed by the branch
+
+1. **Unified mission authority:** no lossless migration between `tasks`, Hermes `mission_runs`, and PR #5 `nexus_missions`. An event/API mapping and conflict/recovery rules are required before any deletion. The current `audit_log` has append-only SQLite triggers, not externally protected tamper evidence.
+2. **Broker isolation and effect reconciliation:** no separate OS identity, validated tool capabilities, remote n8n registry, authenticated callbacks or definitive outcome resolution.
+3. **Hermes trust:** static proposal bearer is not host/run attestation. Startup and continuation into actual Hermes remain blocked.
+4. **iPhone verification:** no physical device/biometric confirmation; the existing silent signing mode is not suitable as sole high-risk authorization.
+5. **Deployable security controls:** private TLS/reverse proxy, secrets handling, file data classification/consent, backup+restore and least privilege are not verified.
+6. **Reliability:** `STARTING` Hermes leases can require manual reconciliation after an uncertain launch; app runs and credential states are not proven end-to-end.
+7. **No tests in this repair session:** all findings about patches are static inspection only; syntax/build/runtime regressions may remain.
+
+## Superseded status snapshot, preserved for history
+
+The following October notes are archival and must not be treated as current configuration or approval to merge/deploy.
+
+---
+
 # الحالة الحالية — 21 أكتوبر 2026
 
 الخطة الحاكمة: [NEXUS_SCENE_FIRST_PLAN.md](NEXUS_SCENE_FIRST_PLAN.md).
