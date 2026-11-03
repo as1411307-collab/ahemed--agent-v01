@@ -32,6 +32,41 @@ approval (`REGISTRY_CHANGED`) and must not be silently accepted.
 compatibility but stores the new stable hash on newly recorded proposals. No
 old proposal is upgraded by guessing its registry meaning.
 
+## Fixes after architecture review: session release and silent iPhone key
+
+- `mission_runs` keeps a partial unique active-session lease. It is released
+  only when the **authenticated Hermes worker** is observed terminal
+  (`completed` / `failed` / `cancelled` / `interrupted` / `stopped`).
+  An `AWAITING_SIGNATURE` run additionally needs a resolved Gateway
+  decision. A signature alone does **not** claim that Hermes finished or any
+  external side effect executed. If worker state or the action result is
+  unknown, the lease remains for reconciliation; no timed automatic retry.
+- A normal completed worker (no proposal) transitions to `COMPLETED`.
+  A terminal worker with a verified DEMO approval becomes `COMPLETED` only
+  when the upstream status also reports success. A rejected proposal with a
+  terminal worker becomes `REVOKED`. Both free the session for a later run.
+  `completed_at` and `completion_reason` are migrated without deleting
+  previous SQLite rows. HTTP GET /v1/hermes/runs/:runId and a new submission
+  recheck the upstream terminal state. Owner decisions return without waiting
+  for status polling.
+- The iPhone Secure Enclave signer now creates the `v2-silent` key with
+  `privateKeyUsage` ONLY and no `userPresence`. Signed message bytes and
+  P-256 verifier stay unchanged. The old v1 Keychain entry is intentionally
+  **NOT deleted**. The old Gateway public key remains valid until a
+  new-key-signed enrollment succeeds.
+- **One-time local repair:** In `apps/core` on the Mac, with the original
+  database and `CORE_OWNER_ID` available, run:
+  `npm run auth:rotate-device`. If multiple devices exist, add
+  `-- --device-id iphone-...`. The command creates a 10-minute random
+  code stored ONLY as a SHA-256 hash. Enter it on the phone's pairing screen.
+  It is bound to the existing device ID, cannot add new devices, and rotates
+  the stored public key + revokes old 5-minute access tokens atomically AFTER
+  the new key proves possession. The original one-use
+  `security_bootstrap` remains consumed. No global auth-table reset occurs.
+- The demo retains **zero external effects**. There is no verified real
+  Hermes Plugin→Gateway channel, no n8n execution and no physical-iPhone
+  hardware signing proof. Core production mode remains blocked.
+
 ## Single pending proposal, atomic session binding
 
 - A mission is inserted into `hermes_launches` and `mission_runs` with
