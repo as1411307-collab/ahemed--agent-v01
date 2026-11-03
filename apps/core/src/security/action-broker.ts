@@ -12,6 +12,8 @@ export interface ApprovalContext {
   readonly workflowDescription: string;
   readonly declaredEffects: readonly string[];
   readonly workflowConfigDigest: string;
+  readonly effectIdempotencyKey: string;
+  readonly proposalDeadlineAt: number;
   readonly registryTrust: 'DEMO_UNVERIFIED';
 }
 
