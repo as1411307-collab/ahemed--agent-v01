@@ -12,14 +12,17 @@ tools:
   tool_search:
     enabled: off
 
-# Avoid enabling the full "hermes-api-server" preset.
+# Explicit minimal API-server toolsets, including readable web extraction.
+# DO NOT add hermes-api-server/hermes-cli/coding as disabled composite
+# entries: Hermes subtracts their overlapping core tools from the allowlist.
 platform_toolsets:
   api_server:
-    - search
+    - web
     - memory
     - nexus-proposal
 
-# Defense in depth: neither delegation nor code/OS/browser tools are needed.
+# Defense in depth: prevent delegation, code/OS/browser and filesystem tools.
+# The plugin checks the loaded config and resolved effective names on every hook.
 # This is not a substitute for OS/container permission isolation.
 agent:
   disabled_toolsets:
@@ -30,6 +33,3 @@ agent:
     - browser
     - cronjob
     - computer_use
-    - coding
-    - hermes-api-server
-    - hermes-cli
