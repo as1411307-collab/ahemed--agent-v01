@@ -1,5 +1,13 @@
 import {canonicalize} from "../../../core/src/security/canonical";
-import type {ApprovalContext} from "../../../core/src/security/action-broker";
+// The iOS client intentionally does not import Node-only broker types:
+// its wire contract is structurally matched by the Core integration tests.
+interface ApprovalContext {
+  source:'hermes';proposalId:string;runId:string;callId:string;
+  registryVersion:string;workflowDisplayName:string;workflowDescription:string;
+  declaredEffects:readonly string[];workflowConfigDigest:string;
+  effectIdempotencyKey:string;proposalDeadlineAt:number;
+  registryTrust:'DEMO_UNVERIFIED';
+}
 /** Render only structured broker envelopes. No model-provided description. */
 export interface DisplayEnvelope {
   type:'ahmed.action.approval.v1'; audience:'ahmed-action-broker';
