@@ -346,31 +346,75 @@ export function registerHermesBridge(p:Params):void{
  app.post("/v1/hermes/bridge/actions",async(req,reply)=>{
    try{
      authorizedPlugin(req);
+     // sessionId is supplied by the authenticated DEMO plugin: the HTTP body
+     // itself is NOT host attestation. Live effects remain unavailable until a
+     // local peer-verified transport attests Hermes' runtime session identity.
      const x=parseProposal(req.body);
-     const run=launchByRun(x.runId);
-     if(!run)fail("UNREGISTERED_RUN");
-     const digest=sha("NEXUS-PROPOSAL-V2\n"+canonicalProposal(x));
-     const found=db.prepare("SELECT * FROM hermes_action_proposals WHERE run_id=? AND call_id=?")
-       .get(x.runId,x.callId) as Proposed|undefined;
-     if(found){
-       if(found.payload_digest!==digest)fail("TOOL_CALL_CHANGED");
-       return {actionId:found.action_id,proposalId:found.action_id,
-         status:proposalStatus(found),deadlineAt:found.deadline_at,execution:"NONE",replayed:true};
-     }
-     const count=db.prepare("SELECT COUNT(*) AS n FROM hermes_action_proposals WHERE run_id=?")
-       .get(x.runId) as {n:number};
-     if(count.n>=3)fail("RUN_PROPOSAL_LIMIT");
-     const proposalId=randomUUID(),deadlineAt=now()+PROPOSAL_TTL_MS;
-     db.prepare("INSERT INTO hermes_action_proposals"+
-       "(action_id,run_id,call_id,owner_id,device_id,payload_digest,decision,intent_json,deadline_at,created_at)"+
-       " VALUES(?,?,?,?,?,?,NULL,?,?,?)")
-       .run(proposalId,x.runId,x.callId,run.owner_id,run.device_id,
-          digest,canonicalize(x),deadlineAt,now());
-     store.audit("HERMES_PROPOSAL_RECORDED",{taskId:run.mission_id,actionId:proposalId},
-       {runId:x.runId,callId:x.callId,payloadDigest:digest,deadlineAt,mode:"DEMO_ONLY"});
-     // Return promptly; no HTTP request hangs while waiting for the phone.
-     return reply.code(202).send({actionId:proposalId,proposalId,
-       status:"PENDING_USER_SIGNATURE_ON_IPHONE",deadlineAt,execution:"NONE",replayed:false});
+     const result=db.transaction(()=>{
+       const activeRun=missionBySession(x.sessionId);
+       if(!activeRun||!activeRun.run_id)return {reason:"NO_BOUND_ACTIVE_RUN"} as const;
+       if(x.runId&&x.runId!==activeRun.run_id)return {reason:"RUN_SESSION_MISMATCH"} as const;
+       const launch=launchByRun(activeRun.run_id);
+       if(!launch||launch.mission_id!==activeRun.mission_id||
+          launch.conversation_id!==x.sessionId)return {reason:"RUN_SESSION_BINDING_MISMATCH"} as const;
+
+       // Idempotency is checked BEFORE reading the current workflow registry.
+       // A definition change cannot turn a legitimate retry into a false
+       // tampering/revocation verdict.
+       const found=db.prepare("SELECT * FROM hermes_action_proposals WHERE run_id=? AND call_id=?")
+         .get(activeRun.run_id,x.callId) as Proposed|undefined;
+       if(found){
+         const locked=readIntent(found);
+         const sameCall=locked.serviceId===x.serviceId&&locked.operation===x.operation&&
+           locked.destination===x.destination&&
+           canonicalize(locked.arguments)===canonicalize(x.arguments);
+         if(!sameCall){
+           db.prepare("UPDATE mission_runs SET state='REVOKED' WHERE run_id=?"+
+             " AND state IN ('ACTIVE','AWAITING_SIGNATURE')").run(activeRun.run_id);
+           store.audit("HERMES_CALL_ID_REUSED_WITH_DIFFERENT_INTENT",{
+             taskId:activeRun.mission_id,actionId:found.action_id
+           },{runId:activeRun.run_id,callId:x.callId,mode:"DEMO_REVOKED"});
+           return {reason:"CALL_ID_INTENT_MISMATCH_RUN_REVOKED"} as const;
+         }
+         return {proposalId:found.action_id,deadlineAt:found.deadline_at,replayed:true} as const;
+       }
+
+       // Strict single pending proposal: a second parallel call in this run is
+       // denied even if it was emitted in the very same model turn.
+       if(activeRun.state!=="ACTIVE")return {reason:"RUN_ALREADY_AWAITING_SIGNATURE"} as const;
+       const frozen=freezeRegistry(x);
+       const proposalId=randomUUID(),createdAt=now(),deadlineAt=createdAt+PROPOSAL_TTL_MS;
+       const locked:LockedActionIntent={
+         proposalId,missionId:activeRun.mission_id,runId:activeRun.run_id,
+         callId:x.callId,ownerId:launch.owner_id,deviceId:launch.device_id,
+         effectIdempotencyKey:"nexus_"+proposalId,
+         serviceId:x.serviceId,operation:x.operation,destination:x.destination,
+         arguments:x.arguments,frozenRegistrySpec:frozen,
+         proposalCreatedAt:createdAt,proposalDeadlineAt:deadlineAt
+       };
+       const intentHash=computeIntentHash(locked);
+       const reserved=db.prepare("UPDATE mission_runs SET proposals_count=proposals_count+1,"+
+         " state='AWAITING_SIGNATURE' WHERE run_id=? AND session_id=? AND state='ACTIVE'"+
+         " AND proposals_count < max_proposals").run(activeRun.run_id,x.sessionId);
+       if(reserved.changes!==1)return {reason:"RUN_PROPOSAL_LIMIT_OR_RACE"} as const;
+       db.prepare("INSERT INTO hermes_action_proposals"+
+         "(action_id,run_id,call_id,owner_id,device_id,payload_digest,intent_hash,"+
+         "decision,intent_json,deadline_at,created_at)"+
+         " VALUES(?,?,?,?,?,?,?,NULL,?,?,?)")
+         .run(proposalId,activeRun.run_id,x.callId,launch.owner_id,launch.device_id,
+           intentHash,intentHash,canonicalize(locked),deadlineAt,createdAt);
+       store.audit("HERMES_PROPOSAL_RECORDED",{taskId:activeRun.mission_id,actionId:proposalId},
+         {runId:activeRun.run_id,sessionId:x.sessionId,callId:x.callId,
+           intentHash,deadlineAt,mode:"DEMO_ONLY"});
+       return {proposalId,deadlineAt,replayed:false} as const;
+     })();
+     if("reason" in result)fail(result.reason);
+     const row=proposed(result.proposalId);
+     if(!row)fail("PROPOSAL_RECORD_NOT_FOUND");
+     // The response may be lost; replaying the same call recovers this ID.
+     return reply.code(202).send({actionId:result.proposalId,proposalId:result.proposalId,
+       status:proposalStatus(row),deadlineAt:result.deadlineAt,
+       intentHash:row.intent_hash,execution:"NONE",replayed:result.replayed});
    }catch(e){return error(reply,e);}
  });
  app.get<{Params:{actionId:string}}>("/v1/hermes/bridge/actions/:actionId",async(req,reply)=>{
