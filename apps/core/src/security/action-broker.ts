@@ -94,15 +94,15 @@ export type ServicePolicy = (input: {
 export function approvalBytes(envelope: ActionEnvelope): Buffer {
   return Buffer.from('AHMED-ACTION-APPROVAL-V1\n' + canonicalize(envelope), 'utf8');
 }
-export function canonicalPayloadHash(envelope: ActionEnvelope): string {
-  // Ephemeral preview hash: includes nonce, issuedAt, expiresAt and approvalContext.intentHash.
-  const {canonicalPayloadHash: _ignored, ...intent} = envelope;
-  return createHash('sha256')
-    .update('AHMED-ACTION-INTENT-V1\n' + canonicalize(intent), 'utf8').digest('hex');
-}
-/** Clear name for the existing wire-compatible canonicalPayloadHash computation. */
 export function computeSigningEnvelopeHash(envelope: ActionEnvelope): string {
-  return canonicalPayloadHash(envelope);
+  // The short-lived preview includes nonce, expiry and the STABLE context.intentHash.
+  const {canonicalPayloadHash: _ignored, ...signingPreview} = envelope;
+  return createHash('sha256')
+    .update('AHMED-SIGNING-ENVELOPE-V1\n' + canonicalize(signingPreview), 'utf8').digest('hex');
+}
+/** Legacy wire field name; now explicitly the signing-envelope hash, NOT the locked intent. */
+export function canonicalPayloadHash(envelope: ActionEnvelope): string {
+  return computeSigningEnvelopeHash(envelope);
 }
 export function actionDigest(envelope: ActionEnvelope): string {
   return createHash('sha256').update(approvalBytes(envelope)).digest('hex');
