@@ -292,6 +292,15 @@ export default function App() {
             </Text>
           </View>
           {latest?.status && <Badge status={latest.status} />}
+          <Pressable style={s.headerBtn} onPress={()=>Alert.alert(
+            'Revoke this device?',
+            'All sessions will be invalidated. Re-enrollment requires a new administrator-issued pairing code.',
+            [{text:'Cancel',style:'cancel'},{text:'Revoke',style:'destructive',onPress:()=>void revokeOwnDevice()
+              .then(()=>{setNeedsPairing(true);setConv(null);setConversationId(null);})
+              .catch(e=>setError({text:errorText(e),retry:()=>{}}))}]
+          )}>
+            <Text style={s.headerBtnText}>Revoke</Text>
+          </Pressable>
           <Pressable onPress={() => setShowTasks((v) => !v)} style={s.headerBtn}>
             <Text style={s.headerBtnText}>Tasks ({tasks.length})</Text>
           </Pressable>
@@ -341,6 +350,7 @@ export default function App() {
             task={t}
             busy={deciding === (t.response.data as ApprovalRequest).action_id}
             onDecide={(d) => void onDecide(t, d)}
+            onReview={() => void startSignedReview(t)}
           />
         ))}
 
@@ -428,16 +438,18 @@ function ApprovalCard({
   task,
   busy,
   onDecide,
+  onReview,
 }: {
   task: ConversationTask;
   busy: boolean;
   onDecide: (d: DecisionValue) => void;
+  onReview: () => void;
 }) {
   const a = task.response.data as ApprovalRequest;
   const minutesLeft = Math.max(0, Math.round((Date.parse(a.expires_at) - Date.now()) / 60000));
   return (
     <View style={s.card}>
-      <Text style={s.cardTitle}>Approval needed</Text>
+      <Text style={s.cardTitle}>Approval requested — dry-run security test</Text>
       <Text style={s.cardDesc}>{a.description}</Text>
       <Row k="Operation" v={a.operation} />
       <Row k="File" v={a.affected_resource} />
@@ -449,8 +461,8 @@ function ApprovalCard({
         <Pressable style={[s.rejectBtn, busy && s.disabled]} disabled={busy} onPress={() => onDecide("REJECT")}>
           <Text style={s.rejectText}>REJECT</Text>
         </Pressable>
-        <Pressable style={[s.approveBtn, busy && s.disabled]} disabled={busy} onPress={() => onDecide("APPROVE")}>
-          {busy ? <ActivityIndicator color={C.bg} /> : <Text style={s.approveText}>APPROVE</Text>}
+        <Pressable style={[s.approveBtn, busy && s.disabled]} disabled={busy} onPress={onReview}>
+          {busy ? <ActivityIndicator color={C.bg} /> : <Text style={s.approveText}>Review + sign (DEMO)</Text>}
         </Pressable>
       </View>
     </View>
