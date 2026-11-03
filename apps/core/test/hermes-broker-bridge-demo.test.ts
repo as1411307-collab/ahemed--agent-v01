@@ -147,6 +147,15 @@ describe("Hermes proposal bridge - async signed demo and no external effects",()
        approvalContext:{...c,callId:"call_attacker_002"}}))
    },token);
    expect(changedCall.statusCode).toBe(403);
+   const changedRun=await post("/v1/hermes/approvals/"+proposalId+"/approve",{
+     signatureDerBase64:sig(approvalBytes({...envlp,
+       approvalContext:{...c,runId:"run_attacker_003"}}))
+   },token);
+   expect(changedRun.statusCode).toBe(403);
+   const changedPayloadHash=await post("/v1/hermes/approvals/"+proposalId+"/approve",{
+     signatureDerBase64:sig(approvalBytes({...envlp,canonicalPayloadHash:"0".repeat(64)}))
+   },token);
+   expect(changedPayloadHash.statusCode).toBe(403);
    const changedExpiry=await post("/v1/hermes/approvals/"+proposalId+"/approve",{
      signatureDerBase64:sig(approvalBytes({...envlp,expiresAt:envlp.expiresAt+60_000}))
    },token);
