@@ -16,7 +16,7 @@ let core:Core;let env:Env;
 const keys=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
 const publicKeySpkiPem=keys.publicKey.export({type:'spki',format:'pem'}).toString();
 async function post(url:string,payload:unknown,token?:string){
-  return core.app.inject({method:'POST',url,headers:token?{authorization:'Bearer '+token}:{},payload:JSON.stringify(payload)});
+  return core.app.inject({method:'POST',url,headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},payload:JSON.stringify(payload)});
 }
 function sig(bytes:Buffer){return sign('sha256',bytes,keys.privateKey).toString('base64');}
 async function pairedSession(){
