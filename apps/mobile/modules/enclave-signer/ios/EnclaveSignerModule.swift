@@ -19,8 +19,8 @@ public class EnclaveSignerModule: Module {
     // Same non-exportable key. Separate domain prefixes stop a signed session
     // proof from being accepted as an action-approval signature.
     AsyncFunction("signChallengeBytes") { (bytes: String) throws -> String in
-      let enrollmentPrefix = "AHMED-DEVICE-ENROLL-V1\\n".replacingOccurrences(of: "\\\\n", with: "\\n")
-      let sessionPrefix = "AHMED-DEVICE-SESSION-V1\\n".replacingOccurrences(of: "\\\\n", with: "\\n")
+      let enrollmentPrefix = "AHMED-DEVICE-ENROLL-V1\n"
+      let sessionPrefix = "AHMED-DEVICE-SESSION-V1\n"
       guard (bytes.hasPrefix(enrollmentPrefix) || bytes.hasPrefix(sessionPrefix)),
             bytes.utf8.count <= 8_192 else {
         throw NSError(domain: "AHMED_ENCLAVE", code: 400,
