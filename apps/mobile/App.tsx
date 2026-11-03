@@ -198,7 +198,47 @@ export default function App() {
     }
   };
 
+  async function startSignedReview(task:ConversationTask):Promise<void>{
+    const a=task.response.data as ApprovalRequest;
+    if(deciding)return;
+    setDeciding(a.action_id);
+    try{
+      const preview=await requestSignedPreview(task.task_id,a.action_id);
+      if(preview.mode!=='DEMO_NO_EXECUTION')throw new Error('Server did not confirm demo mode');
+      setActiveReview(preview.envelope);
+      setError(null);
+    }catch(e){setError({text:errorText(e),retry:()=>void startSignedReview(task)});}
+    finally{setDeciding(null);}
+  }
+  async function signReviewed(signatureDerBase64:string):Promise<void>{
+    if(!activeReview)throw new Error('No signed preview');
+    const result=await submitSignedPreview(activeReview.actionId,signatureDerBase64);
+    if(result.status!=='DEMO_SIGNED_NO_EXECUTION')throw new Error('Unexpected server result');
+    setActiveReview(null);
+    setHint('Signature verified by Core + Broker. DEMO ONLY: no action executed.');
+  }
+  async function rejectReviewed():Promise<void>{
+    if(!activeReview)return;
+    try{
+      await rejectSignedPreview(activeReview.actionId);
+      setActiveReview(null);setHint('Signed preview rejected. Nothing executed.');
+    }catch(e){setError({text:errorText(e),retry:()=>void rejectReviewed()});}
+  }
+  async function pair():Promise<void>{
+    if(pairingBusy)return;
+    setPairingBusy(true);setPairingError(null);
+    try{
+      await enrollDevice(pairingCode);
+      setPairingCode('');setNeedsPairing(false);
+      let id=await AsyncStorage.getItem(STORAGE_KEY);
+      if(!id){id=newId();await AsyncStorage.setItem(STORAGE_KEY,id);}
+      setConversationId(id);
+      await load(id);
+    }catch(e){setPairingError(errorText(e));}
+    finally{setPairingBusy(false);}
+  }
   const onDecide = async (task: ConversationTask, decision: DecisionValue) => {
+    if(decision==='APPROVE'){setHint('Unsigned approval is disabled. Use signed demo review.');return;}
     const a = task.response.data as ApprovalRequest;
     if (!conversationId || deciding) return;
     setDeciding(a.action_id);
@@ -215,6 +255,30 @@ export default function App() {
 
   // ---- render ----
   const latest = tasks[0]?.response;
+  if(needsPairing)return (
+    <View style={[s.root,{padding:24,justifyContent:'center',gap:18}]}>
+      <StatusBar style="light"/>
+      <Text style={[s.title,{fontSize:24}]}>Secure iPhone pairing</Text>
+      <Text style={s.muted}>Requires an iOS Development Client and HTTPS Core. Enter the one-use 24+ character pairing code supplied privately by the server owner.</Text>
+      <TextInput style={s.input} value={pairingCode} onChangeText={setPairingCode}
+        autoCapitalize="none" autoCorrect={false} secureTextEntry
+        placeholder="One-time pairing code" placeholderTextColor={C.muted}/>
+      {pairingError?<Text style={s.errorText}>{pairingError}</Text>:null}
+      <Pressable style={[s.approveBtn,pairingBusy&&s.disabled]} disabled={pairingBusy} onPress={()=>void pair()}>
+        <Text style={s.approveText}>{pairingBusy?'Pairing…':'Pair this iPhone'}</Text>
+      </Pressable>
+    </View>
+  );
+  if(activeReview)return (
+    <View style={s.root}>
+      <StatusBar style="light"/>
+      <Text style={{color:C.gold,fontWeight:'bold',paddingHorizontal:20,paddingTop:12}}>
+        DEMO — signature verification only. No real action will execute.
+      </Text>
+      <ApprovalReview key={activeReview.actionId} envelope={activeReview}
+        onSigned={signReviewed} onReject={()=>void rejectReviewed()}/>
+    </View>
+  );
 
   return (
     <View style={s.root}>
