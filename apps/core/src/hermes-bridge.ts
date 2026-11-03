@@ -148,7 +148,7 @@ export function registerHermesBridge(p:Params):void{
    "state TEXT NOT NULL CHECK(state IN ('STARTING','ACTIVE','AWAITING_SIGNATURE','COMPLETED','REVOKED')),"+
    "proposals_count INTEGER NOT NULL DEFAULT 0 CHECK(proposals_count>=0),"+
    "max_proposals INTEGER NOT NULL DEFAULT 3 CHECK(max_proposals BETWEEN 1 AND 10),"+
-   "created_at INTEGER NOT NULL);"+
+   "created_at INTEGER NOT NULL,completed_at INTEGER,completion_reason TEXT);"+
    "CREATE UNIQUE INDEX IF NOT EXISTS idx_single_active_run_per_session "+
      "ON mission_runs(session_id) WHERE state IN ('STARTING','ACTIVE','AWAITING_SIGNATURE');"+
    "CREATE TABLE IF NOT EXISTS hermes_action_proposals("+
@@ -171,6 +171,11 @@ export function registerHermesBridge(p:Params):void{
  const fields=(db.pragma("table_info(hermes_action_proposals)") as {name:string}[]).map(f=>f.name);
  for(const col of ["intent_hash TEXT","intent_json TEXT","deadline_at INTEGER","created_at INTEGER"]){
    if(!fields.includes(col.split(" ")[0]))db.exec("ALTER TABLE hermes_action_proposals ADD COLUMN "+col);
+ }
+ // Idempotent migration for existing PR #9 SQLite databases.
+ const runFields=(db.pragma("table_info(mission_runs)") as {name:string}[]).map(f=>f.name);
+ for(const column of ["completed_at INTEGER","completion_reason TEXT"]){
+   if(!runFields.includes(column.split(" ")[0]))db.exec("ALTER TABLE mission_runs ADD COLUMN "+column);
  }
  const launchByRun=(id:string):Launch|undefined=>
    db.prepare("SELECT * FROM hermes_launches WHERE run_id=?").get(id) as Launch|undefined;
@@ -270,6 +275,51 @@ export function registerHermesBridge(p:Params):void{
    }catch{return "REGISTRY_CHANGED";}
    return "PENDING_USER_SIGNATURE_ON_IPHONE";
  }
+ /**
+  * Releases a session only when Hermes has *confirmed* the worker is terminal.
+  * Phone APPROVE/REJECT alone is NOT proof the worker stopped executing.
+  * A pending/unknown approval keeps its lease and must be resolved separately.
+  */
+ function settleTerminalWorker(runIdValue:string,status:unknown):{state:string;released:boolean}{
+   const kind=typeof status==="string"?status.toLowerCase():"";
+   if(!["completed","failed","cancelled","canceled","interrupted","stopped"].includes(kind))
+     return {state:missionByRun(runIdValue)?.state??"UNKNOWN",released:false};
+   return db.transaction(()=>{
+     const run=missionByRun(runIdValue);
+     if(!run)return {state:"UNKNOWN",released:false};
+     if(run.state==="COMPLETED"||run.state==="REVOKED")
+       return {state:run.state,released:false};
+     if(run.state==="STARTING")return {state:run.state,released:false};
+     let finalState:"COMPLETED"|"REVOKED";
+     if(run.state==="AWAITING_SIGNATURE"){
+       const proposals=db.prepare("SELECT decision FROM hermes_action_proposals WHERE run_id=?")
+         .all(runIdValue) as {decision:string|null}[];
+       if(proposals.length!==1||proposals[0].decision===null)
+         return {state:run.state,released:false};
+       finalState=proposals[0].decision==="DEMO_VERIFIED"&&kind==="completed"
+         ?"COMPLETED":"REVOKED";
+     }else{
+       finalState=kind==="completed"?"COMPLETED":"REVOKED";
+     }
+     const changed=db.prepare("UPDATE mission_runs SET state=?,completed_at=?,completion_reason=?"+
+       " WHERE run_id=? AND state=?")
+       .run(finalState,now(),"HERMES_WORKER_"+kind.toUpperCase(),runIdValue,run.state);
+     if(changed.changes!==1)return {state:run.state,released:false};
+     store.audit("HERMES_MISSION_LEASE_RELEASED",{taskId:run.mission_id},{
+       runId:runIdValue,workerStatus:kind,finalState
+     });
+     return {state:finalState,released:true};
+   })();
+ }
+ // A decision may arrive after Hermes already finished. A failed status
+ // probe must NOT release the lease or claim a confirmed terminal outcome.
+ async function reconcileAfterDecision(runIdValue:string):Promise<void>{
+   try{
+     const worker=await hermes("/v1/runs/"+encodeURIComponent(runIdValue),"GET");
+     if(worker.run_id!==runIdValue)return;
+     settleTerminalWorker(runIdValue,worker.status);
+   }catch{ /* Keep lease until a later verified status check. */ }
+ }
  function error(reply:{code:(n:number)=>{send:(v:unknown)=>unknown}},e:unknown):unknown{
    const message=e instanceof Error?e.message:"HERMES_BRIDGE_ERROR";
    const status=message.startsWith("HERMES_UNAVAILABLE:")?502:
@@ -335,6 +385,8 @@ export function registerHermesBridge(p:Params):void{
          " WHERE mission_id=? AND run_id IS NULL").run(out.run_id,missionId);
        if(launchBound.changes!==1)fail("RUN_LAUNCH_BINDING_CONFLICT");
      })();
+     // Hermes may finish before the launch HTTP response returns.
+     settleTerminalWorker(out.run_id,out.status);
      return reply.code(202).send({mode:"DEMO_NO_EXECUTION",missionId,runId:out.run_id,replayed:false});
    }catch(e){return error(reply,e);}
  });
@@ -343,8 +395,11 @@ export function registerHermesBridge(p:Params):void{
      const who=deviceOwner(req),row=launchByRun(req.params.runId);
      if(!row||row.owner_id!==who.ownerId||row.device_id!==who.deviceId)fail("RUN_NOT_OWNED");
      const out=await hermes("/v1/runs/"+encodeURIComponent(row.run_id!),"GET");
+     if(out.run_id!==row.run_id)fail("HERMES_RUN_ID_MISMATCH");
+     const settled=settleTerminalWorker(row.run_id!,out.status);
      return {missionId:row.mission_id,runId:row.run_id,
        workerStatus:typeof out.status==="string"?out.status:"UNKNOWN",
+       missionState:settled.state,sessionReleased:settled.released,
        authority:"GATEWAY_FOR_ACTIONS"};
    }catch(e){return error(reply,e);}
  });
@@ -506,6 +561,7 @@ export function registerHermesBridge(p:Params):void{
          "(proposal_id,run_id,outcome,receipt_digest,created_at) VALUES(?,?,?,?,?)")
          .run(row.action_id,row.run_id,"REJECTED",null,now());
      })();
+     await reconcileAfterDecision(row.run_id);
      return {status:"REJECTED",execution:"NONE"};
    }catch(e){return error(reply,e);}
  });
@@ -521,6 +577,7 @@ export function registerHermesBridge(p:Params):void{
        actionId:prev.envelope.actionId,deviceId:who.deviceId,signatureDerBase64:signature
      });
      completeDemo(row,result.receipt,prev.envelope);
+     await reconcileAfterDecision(row.run_id);
      const run=launchByRun(row.run_id);
      store.audit("HERMES_APPROVAL_DEMO_VERIFIED",{
        taskId:run?.mission_id??null,actionId:row.action_id
