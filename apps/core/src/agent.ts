@@ -59,6 +59,26 @@ export class Agent {
 
   private async runModelLoop(task: TaskRow): Promise<void> {
     const messages = this.history(task);
+    // A read-only cloud-facing worker may read only files that the owner
+    // uploaded in THIS conversation before this task. Other workspace files
+    // must not be silently exposed to the external model by tool requests.
+    const historyRows = this.store.listMessages(task.conversation_id);
+    const taskMessageIndex = historyRows.findIndex(
+      m => m.task_id === task.id && m.role === "user",
+    );
+    const allowedReadPaths = new Set<string>();
+    if (!this.allowSensitiveExecution && taskMessageIndex >= 0) {
+      for (const m of historyRows.slice(0, taskMessageIndex + 1)) {
+        if (m.role !== "user") continue;
+        const attachments = JSON.parse(m.attachments) as Attachment[];
+        for (const attachment of attachments) {
+          if (typeof attachment.workspace_path === "string") {
+            const filePath = this.ws.resolve(attachment.workspace_path);
+            allowedReadPaths.add(this.ws.relative(filePath));
+          }
+        }
+      }
+    }
     // The signed-device deployment is read-only. Never even advertise write tools
     // to the model; a forged tool call is rejected again below.
     const tools = Object.values(TOOL_REGISTRY)
@@ -100,6 +120,14 @@ export class Agent {
             const plan = planMove(this.ws, call.input);
             this.requestApproval(task, spec.name, plan, turn.text);
             return;
+          }
+          if (!this.allowSensitiveExecution) {
+            const requested = (call.input as {path?: unknown} | null)?.path;
+            if (typeof requested !== "string" ||
+              !allowedReadPaths.has(this.ws.relative(this.ws.resolve(requested)))) {
+              throw new ToolError("PATH_OUTSIDE_WORKSPACE",
+                "Read denied: file was not uploaded to this conversation.");
+            }
           }
           const out = await readFileTool(this.ws, call.input);
           usedTool = spec.name;
