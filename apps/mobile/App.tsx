@@ -32,7 +32,7 @@ import {ApiError, CORE_URL, decide, getConversation, getTask, newId, sendMessage
  type HermesPendingApproval,type PickedFile} from "./src/api";
 import {ApprovalReview} from "./src/security/ApprovalReview";
 import type {DisplayEnvelope} from "./src/security/approval-display";
-import {enrollDevice,hasPairedDevice,revokeOwnDevice} from "./src/security/device-client";
+import {enrollDevice,getDeviceAccessToken,hasPairedDevice,revokeOwnDevice} from "./src/security/device-client";
 
 const C = {
   bg: "#000000",
@@ -118,6 +118,17 @@ export default function App() {
     (async () => {
       if(!await hasPairedDevice()){
         setNeedsPairing(true);setLoading(false);return;
+      }
+      // After updating v1 -> v2 silent Secure Enclave key, the persisted
+      // deviceId still exists but the Gateway has the OLD public key.
+      // Show re-pair rather than trapping the owner on a failing chat screen.
+      try{await getDeviceAccessToken();}
+      catch(e){
+        const message=errorText(e);
+        if(/INVALID_DEVICE_PROOF|DEVICE_NOT_ENROLLED|PAIRING_REQUIRED/.test(message)){
+          setNeedsPairing(true);setLoading(false);return;
+        }
+        // A temporary network error is not evidence that pairing was lost.
       }
       let id = await AsyncStorage.getItem(STORAGE_KEY).catch(() => null);
       if (!id) {
@@ -323,7 +334,7 @@ export default function App() {
     <View style={[s.root,{padding:24,justifyContent:'center',gap:18}]}>
       <StatusBar style="light"/>
       <Text style={[s.title,{fontSize:24}]}>Secure iPhone pairing</Text>
-      <Text style={s.muted}>Requires an iOS Development Client and HTTPS Core. Enter the one-use 24+ character pairing code supplied privately by the server owner.</Text>
+      <Text style={s.muted}>Secure Enclave signing without Face ID. For a previously paired phone, create a short-lived re-pair code locally on the Mac. Your original key is not deleted by the app.</Text>
       <TextInput style={s.input} value={pairingCode} onChangeText={setPairingCode}
         autoCapitalize="none" autoCorrect={false} secureTextEntry
         placeholder="One-time pairing code" placeholderTextColor={C.muted}/>
