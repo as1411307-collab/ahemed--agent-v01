@@ -188,21 +188,26 @@ export function registerHermesBridge(p:Params):void{
  function policy(intent:{serviceId:string;operation:string;destination:string;
    arguments:Record<string,JsonValue>;approvalContext?:ApprovalContext}):boolean{
    try{
-     const entry=registry(intent);
      const c=intent.approvalContext;
-     if(!c||c.source!=="hermes"||c.registryVersion!==REGISTRY_VERSION||
-       c.registryTrust!=="DEMO_UNVERIFIED"||
-       c.workflowDisplayName!==entry.displayName||c.workflowDescription!==entry.description||
-       JSON.stringify(c.declaredEffects)!==JSON.stringify(entry.declaredEffects)||
-       c.workflowConfigDigest!=="UNVERIFIED_NO_REMOTE_N8N_CONFIGURATION"||
-       c.effectIdempotencyKey!=="nexus_"+c.proposalId)return false;
+     if(!c||c.source!=="hermes"||c.registryTrust!=="DEMO_UNVERIFIED")return false;
      const row=proposed(c.proposalId);
-     if(!row||!row.deadline_at||row.run_id!==c.runId||row.call_id!==c.callId||
-       row.deadline_at!==c.proposalDeadlineAt)return false;
-     const p=readIntent(row);
-     return p.serviceId===intent.serviceId&&p.operation===intent.operation&&
-       p.destination===intent.destination&&
-       canonicalize(p.arguments)===canonicalize(intent.arguments);
+     if(!row||row.decision!==null||!row.deadline_at||now()>=row.deadline_at||
+        row.run_id!==c.runId||row.call_id!==c.callId||
+        row.deadline_at!==c.proposalDeadlineAt)return false;
+     const run=missionByRun(row.run_id);
+     if(!run||run.state!=="AWAITING_SIGNATURE")return false;
+     const locked=readIntent(row),frozen=locked.frozenRegistrySpec;
+     if(c.intentHash!==row.intent_hash||c.registryVersion!==frozen.registryVersion||
+        c.workflowDisplayName!==frozen.title||c.workflowDescription!==frozen.humanSummary||
+        canonicalize([...c.declaredEffects])!==canonicalize([...frozen.declaredSideEffects])||
+        c.workflowConfigDigest!==frozen.workflowConfigDigest||
+        c.effectIdempotencyKey!==locked.effectIdempotencyKey)return false;
+     if(locked.serviceId!==intent.serviceId||locked.operation!==intent.operation||
+        locked.destination!==intent.destination||
+        canonicalize(locked.arguments)!==canonicalize(intent.arguments))return false;
+     // Changing the local registry while a proposal is pending invalidates
+     // approval instead of silently displaying or executing a different meaning.
+     return canonicalize(freezeRegistry(intent))===canonicalize(frozen);
    }catch{return false;}
  }
  function enforcer(deviceId:string):ActionBrokerEnforcer{
@@ -218,9 +223,10 @@ export function registerHermesBridge(p:Params):void{
  function owned(proposalId:string,who:DeviceIdentity):Proposed{
    const row=proposed(proposalId);
    if(!row||row.owner_id!==who.ownerId||row.device_id!==who.deviceId)fail("PROPOSAL_NOT_OWNED");
-   if(!row.deadline_at||!row.intent_json)fail("LEGACY_PROPOSAL_QUARANTINED");
+   if(!row.deadline_at||!row.intent_json||!row.intent_hash)fail("LEGACY_PROPOSAL_QUARANTINED");
    const run=launchByRun(row.run_id);
    if(!run||run.owner_id!==who.ownerId||run.device_id!==who.deviceId)fail("RUN_NOT_OWNED");
+   if(missionByRun(row.run_id)?.state!=="AWAITING_SIGNATURE")fail("RUN_NOT_AWAITING_SIGNATURE");
    readIntent(row);return row;
  }
  function currentPreview(row:Proposed):{preview:Preview;envelope:ActionEnvelope;state:string;receipt?:string}|undefined{
@@ -229,7 +235,8 @@ export function registerHermesBridge(p:Params):void{
    const record=brokerStore.find(preview.broker_action_id);
    if(!record||record.envelope.approvalContext?.proposalId!==row.action_id||
       record.envelope.approvalContext?.runId!==row.run_id||
-      record.envelope.approvalContext?.callId!==row.call_id)fail("PREVIEW_TAMPERED");
+      record.envelope.approvalContext?.callId!==row.call_id||
+      record.envelope.approvalContext?.intentHash!==row.intent_hash)fail("PREVIEW_TAMPERED");
    return {preview,envelope:record.envelope,state:record.status,receipt:record.receipt};
  }
  function completeDemo(row:Proposed,receipt:string,envelope:ActionEnvelope):void{
@@ -244,7 +251,8 @@ export function registerHermesBridge(p:Params):void{
    })();
  }
  function proposalStatus(row:Proposed):string{
-   if(!row.intent_json||!row.deadline_at)return "LEGACY_QUARANTINED";
+   if(!row.intent_json||!row.deadline_at||!row.intent_hash)return "LEGACY_QUARANTINED";
+   if(missionByRun(row.run_id)?.state==="REVOKED")return "RUN_REVOKED";
    if(row.decision==="REJECTED")return "REJECTED";
    const curr=currentPreview(row);
    if(curr?.state==="COMPLETED"){
@@ -295,6 +303,7 @@ export function registerHermesBridge(p:Params):void{
        if(previous.owner_id!==who.ownerId||previous.device_id!==who.deviceId||
           previous.conversation_id!==b.conversationId||previous.input_digest!==digest)fail("RUN_REQUEST_CONFLICT");
        if(!previous.run_id)fail("RUN_START_OUTCOME_UNKNOWN_RECONCILE_MANUALLY");
+       if(missionByRun(previous.run_id)?.state==="REVOKED")fail("RUN_REVOKED");
        return {mode:"DEMO_NO_EXECUTION",missionId:previous.mission_id,runId:previous.run_id,replayed:true};
      }
      const missionId=randomUUID();
@@ -305,12 +314,22 @@ export function registerHermesBridge(p:Params):void{
          "(mission_id,run_id,owner_id,device_id,conversation_id,request_id,input_digest,created_at)"+
          " VALUES(?,NULL,?,?,?,?,?,?)")
          .run(missionId,who.ownerId,who.deviceId,b.conversationId,b.requestId,digest,now());
+       // Partial unique index reserves the session BEFORE outbound /v1/runs.
+       db.prepare("INSERT INTO mission_runs(mission_id,session_id,run_id,state,created_at)"+
+         " VALUES(?,?,NULL,'STARTING',?)").run(missionId,b.conversationId,now());
      })();
      const idem=sha("nexus-hermes-run-v1:"+who.ownerId+":"+b.requestId);
      const out=await hermes("/v1/runs","POST",{input:b.input,session_id:b.conversationId},idem);
      if(!runId(out.run_id))fail("INVALID_HERMES_RUN_ID");
-     db.prepare("UPDATE hermes_launches SET run_id=? WHERE mission_id=? AND run_id IS NULL")
-       .run(out.run_id,missionId);
+     db.transaction(()=>{
+       const bound=db.prepare("UPDATE mission_runs SET run_id=?,state='ACTIVE'"+
+         " WHERE mission_id=? AND session_id=? AND state='STARTING' AND run_id IS NULL")
+         .run(out.run_id,missionId,b.conversationId);
+       if(bound.changes!==1)fail("RUN_START_BINDING_CONFLICT");
+       const launchBound=db.prepare("UPDATE hermes_launches SET run_id=?"+
+         " WHERE mission_id=? AND run_id IS NULL").run(out.run_id,missionId);
+       if(launchBound.changes!==1)fail("RUN_LAUNCH_BINDING_CONFLICT");
+     })();
      return reply.code(202).send({mode:"DEMO_NO_EXECUTION",missionId,runId:out.run_id,replayed:false});
    }catch(e){return error(reply,e);}
  });
