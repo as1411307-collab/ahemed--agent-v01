@@ -1,57 +1,17 @@
-# Security gates — phase 1 (draft, fail-closed roadmap)
+# حدود الأمان الحالية — 2026-11-05
 
-This is **not** a claim that Ahmed Agent is production-hardened. This branch
-contains an offline credential inventory. Existing main still has
-EXPO_PUBLIC_APP_TOKEN, the APP_TOKEN shared bearer, and unsandboxed Agent Core
-file access. Do not put this system directly on the public Internet.
+**ليست موافقة على النشر العام.** هذا التقرير يصف شفرة `main` بتاريخ 5 نوفمبر، ولا يدعي إجراء فحص اختراق أو اختبار آيفون حقيقي.
 
-## What the prestart audit can prove
+## مثبت في الشفرة
+- تسجيل جهاز/جلسة بمفتاح عام وتوقيع تحدٍّ على النواة بدل تضمين `APP_TOKEN` في تطبيق الإنتاج. توجد مسارات قديمة للاختبارات فقط.
+- تجارب مراجعة موقّعة تعيد `DEMO_NO_EXECUTION` أو إيصالات `NO_EFFECT`؛ هذا ليس تنفيذ أدوات.
+- `apps/core/src/main.ts` يرفض تشغيل الإنتاج إذا لم تجتز مراجعة الحدود الأمنية؛ نتيجة `remoteN8nVerified` في الفاحص الحالي `false` دائمًا، لذا لا يجوز وصف الإنتاج بأنه جاهز.
+- الأسرار المستعملة للنموذج يجب أن تبقى في بيئة النواة، لا في `EXPO_PUBLIC_*`.
 
-- It checks concrete assignments in local .env files, active process environment
-  variables, references to EXPO_PUBLIC_APP_TOKEN in mobile source, and **exported**
-  n8n workflow credentials. It never logs secret values.
-- It distinguishes inference provider API keys (WARN; may belong to a dedicated
-  inference proxy) from action-capable service credentials (BLOCK outside broker).
-- It fails closed on malformed exported n8n workflows.
+## غير مثبت بعد
+- أمان شبكة/عزل عمليات فعلية، والربط الآمن مع مزودي الإجراءات؛ صلاحيات n8n Cloud غير مفحوصة عن بعد.
+- اختبار iOS Secure Enclave على جهاز حقيقي وإثبات هوية الجهاز؛ الاختبارات المحاكية لا تكفي.
+- إجراء خارجي حقيقي مع دليل تسوية بعد تعطل وقع أثناء الأثر الجانبي.
+- مراجعة أمنية شاملة للتعامل مع Prompt Injection وإساءة استخدام الأدوات.
 
-Run at repo root with the @ahmed/core tsx binary (after npm ci):
-
-    npm exec -w @ahmed/core -- tsx scripts/audit-credential-monopoly.ts --root .
-
-Use --strict as a **production stop**: strict mode intentionally fails until
-remote n8n credential discovery, Docker and service-account identities are
-verified. A green local scan alone is never deployment certification.
-
-## Remaining enforcement gaps
-
-1. Replace the Expo public static bearer and legacy Fastify APPROVE route with
-   owner/device-scoped authentication and a signed, stored action envelope.
-2. Put the Action Broker in a **separate OS principal/process** with broker-only
-   action credentials. The Agent and coding worker must not have the destination
-   credentials or a direct socket path to privileged services.
-3. Externally audit n8n Cloud: actual workflows, credentials, cron/webhook
-   triggers and OAuth scopes. Exported JSON credentials references are not
-   equivalent to inspecting the encrypted remote credential store.
-4. Run real iOS Secure Enclave signing and enrollment/revocation tests. A valid
-   P-256 signature alone cannot remotely attest Secure Enclave origin; app/device
-   attestation and enrollment need their own design.
-5. Use RFC8785 strict I-JSON canonical bytes; reject duplicate keys during
-   inbound parsing, unsupported numeric forms, lone surrogates, and unexpected
-   fields. Display every actionable parameter *before* requesting presence.
-6. For MCP 2026-07-28 use official TypeScript SDK v2 for modern/legacy
-   negotiation. The client must implement Mcp-Method, Mcp-Name and request _meta;
-   do not treat server-provided readOnlyHint or description as authority.
-7. Crash after an external side effect but before durable receipt remains
-   ambiguous. Mark UNKNOWN and reconcile upstream by idempotency key; never
-   indiscriminately retry.
-
-## Reference research
-
-- https://datatracker.ietf.org/doc/html/rfc8785
-- https://blog.modelcontextprotocol.io/posts/2026-07-28/
-- https://ts.sdk.modelcontextprotocol.io/v2/protocol-versions
-- https://developer.apple.com/documentation/security/protecting-keys-with-the-secure-enclave
-- https://docs.expo.dev/modules/get-started
-
-Branch is a **draft phase-1 PR**; no production server was changed, no iPhone
-hardware signing was tested, and remote n8n access was not inspected.
+لا تُخفّف هذه القيود لتشغيل الخادم. حافظ على الاختبارات والبوابات الفاشلة افتراضيًا حتى يتحقق دليل تقني.
