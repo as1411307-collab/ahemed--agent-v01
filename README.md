@@ -1,63 +1,33 @@
-# AHMED Agent (v0.1)
+# المنظومة — Private Agent Core + iPhone Control
 
-AHMED Agent is a monorepo that pairs a mobile client with a stateful Core API.  
-The Core owns task state, tool execution, approval workflow, audit logging, and model interaction.
+مستودع البرمجيات الحالي: نواة **TypeScript / Fastify / SQLite**، عميل **Expo / React Native**، وعقد مشترك في `packages/contract`.
 
-## Repository layout
+الهدف: نواة وبيانات تحت سيطرة المستخدم، يمكن نقلها بين استضافة محلية وسحابية؛ نماذج LLM والموصلات الخارجية خدمات قابلة للاستبدال. **لا يشترط مشهد سينمائي، ولا تعدد وكلاء، ولا قاعدة بيانات ثانية.**
 
-- `apps/core` — Fastify + TypeScript + SQLite Core API
-- `apps/mobile` — Expo mobile client
-- `packages/contract` — shared request/response contract types
-
-## Quick start
-
-1. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-2. Create environment files:
-
-   ```bash
-   # macOS/Linux
-   cp apps/core/.env.example apps/core/.env
-   cp apps/mobile/.env.example apps/mobile/.env
-   ```
-
-   ```powershell
-   # Windows PowerShell
-   Copy-Item apps/core/.env.example apps/core/.env
-   Copy-Item apps/mobile/.env.example apps/mobile/.env
-   ```
-
-3. Fill required Core values in `apps/core/.env`:
-   - `CORE_OWNER_ID`
-   - `CORE_PAIRING_CODE` (recommended for first device enrollment)
-   - `ANTHROPIC_API_KEY`
-   - `MODEL_NAME`
-
-4. Set the mobile API endpoint in `apps/mobile/.env`:
-   - `EXPO_PUBLIC_CORE_URL=https://<your-secure-core-url>`
-
-5. Run Core and mobile app:
-
-   ```bash
-   npm run core
-   npm run mobile
-   ```
-
-## Validation commands
-
-```bash
-npm test
-npm run typecheck
-npm run typecheck -w @ahmed/mobile
+## تشغيل التطوير
+من جذر المستودع:
+```sh
+npm ci
+cp apps/core/.env.example apps/core/.env
+cp apps/mobile/.env.example apps/mobile/.env
 npm run verify
+npm run core
+# افتح نافذة أخرى:
+npm run mobile
 ```
+املأ متغيرات البيئة المطلوبة بنفسك. لا تضع أي مفتاح API في التطبيق أو متغيرات `EXPO_PUBLIC_*`. الجهاز يحتاج تسجيلًا بمفتاح ربط أحادي الاستخدام، وعنوان Core عبر HTTPS موثوق للوصول من الآيفون. راجع ملفات `.env.example`.
 
-## Key references
+## الواقع التشغيلي
+- `npm run verify`: اختبارات النواة وفحص TypeScript للنواة والعقد والتطبيق.
+- `apps/core/src/main.ts` يمنع التشغيل بوضع `NODE_ENV=production` حتى استيفاء ضوابط أمنية لم تُستوف بعد.
+- مسار Hermes/التوقيع في المستودع **DEMO / NO EFFECT**؛ لا يثبت تنفيذ أدوات خارجية أو موافقات آيفون فعلية.
+- لا توجد أدلة في هذا المستودع على أن n8n الخارجي أو تشغيل LLM محلي أصبح جاهزًا للإنتاج.
+- لا تستخدم خادم التطوير مكشوفًا للإنترنت.
 
-- `V0_CONTRACT.md` — source-of-truth API contract
-- `docs/BUILD_PROMPT.md` — v0.1 scope constraints
-- `docs/SECURITY_GATES_PHASE1.md` — security gate and deployment caveats
+## المراجع الحاكمة
+- `CLAUDE.md`: التوجه الهندسي الحالي والممنوعات.
+- `docs/STATUS.md`: حالة العمل المؤكدة.
+- `docs/SECURITY_GATES_PHASE1.md`: حدود الأمان والنشر.
+- `packages/contract/src/index.ts`: عقود الأنواع الحالية، وشفرة Core هي مرجع سلوك المسارات الفعلية.
+
+الخطط السابقة محفوظة في Git history وليست تعليمات تنفيذ حالية.
