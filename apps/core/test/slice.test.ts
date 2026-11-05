@@ -99,6 +99,7 @@ describe("1. read a file and summarize it", () => {
     const boundary = "----ExpoFetchFormBoundaryAbCdEf0123456789";
     const payload = requestPayload(CONV, "", { name: "تقرير.pdf", content: "x", type: "application/pdf" });
     const pdf = makePdf("From iPhone");
+    payload.attachments[0].size_bytes = pdf.length;
     const body = Buffer.concat([
       Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="payload"\r\n\r\n${JSON.stringify(payload)}\r\n`),
       Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="${encodeURIComponent("تقرير.pdf")}"\r\n\r\n`),
@@ -130,6 +131,192 @@ describe("1. read a file and summarize it", () => {
     const rejected = core.store.listAudit().filter((a) => a.event === "REQUEST_REJECTED");
     expect(rejected).toHaveLength(1);
     expect(JSON.parse(rejected[0].detail!).request_id).toBe(payload.request_id);
+  });
+
+  it("rejects client-supplied workspace_path in attachment metadata", async () => {
+    const payload = requestPayload(CONV, "", REPORT) as Record<string, unknown>;
+    const attachments = (payload.attachments as Record<string, unknown>[]) ?? [];
+    payload.attachments = [{ ...attachments[0], workspace_path: "archive/forged.txt" }];
+    const mp = multipart(payload, REPORT);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("workspace_path must not be sent by the client");
+  });
+
+  it("rejects more than one attachment metadata entry for file input", async () => {
+    const payload = requestPayload(CONV, "", REPORT);
+    payload.attachments = [
+      { name: "report.txt", mime_type: "text/plain", size_bytes: REPORT.content.length },
+      { name: "report-copy.txt", mime_type: "text/plain", size_bytes: REPORT.content.length },
+    ];
+    const mp = multipart(payload, REPORT);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("At most one attachment metadata entry is allowed");
+  });
+
+  it("rejects invalid client_context values", async () => {
+    const payload = requestPayload(CONV, "hi");
+    (payload as Record<string, unknown>).client_context = { platform: 123 };
+    const mp = multipart(payload);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("client_context.platform");
+  });
+
+  it("rejects unsupported top-level payload fields", async () => {
+    const payload = requestPayload(CONV, "hi") as Record<string, unknown>;
+    payload.debug = true;
+    const mp = multipart(payload);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("unsupported field(s): debug");
+  });
+
+  it("rejects unsupported attachment metadata fields", async () => {
+    const payload = requestPayload(CONV, "", REPORT) as Record<string, unknown>;
+    payload.attachments = [{ name: REPORT.name, mime_type: REPORT.type, size_bytes: REPORT.content.length, checksum: "abc" }];
+    const mp = multipart(payload, REPORT);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("attachments[0] contains unsupported field(s): checksum");
+  });
+
+  it("rejects unsupported client_context fields", async () => {
+    const payload = requestPayload(CONV, "hi") as Record<string, unknown>;
+    payload.client_context = { platform: "ios", timezone: "UTC" };
+    const mp = multipart(payload);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("client_context' contains unsupported field(s): timezone");
+  });
+
+  it("rejects request_id and conversation_id with outer spaces", async () => {
+    const payload = requestPayload(CONV, "hi", undefined, " req-id ");
+    payload.conversation_id = ` ${CONV} `;
+    const mp = multipart(payload);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("request_id");
+  });
+
+  it("rejects file metadata size mismatch with actual uploaded bytes", async () => {
+    const payload = requestPayload(CONV, "", REPORT);
+    payload.attachments[0].size_bytes = REPORT.content.length + 10;
+    const mp = multipart(payload, REPORT);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("size_bytes must match");
+  });
+
+  it("rejects file metadata MIME mismatch when multipart MIME is specific", async () => {
+    const file = { name: "report.pdf", content: makePdf("x"), type: "application/pdf" };
+    const payload = requestPayload(CONV, "", file);
+    payload.attachments[0].mime_type = "text/plain";
+    const mp = multipart(payload, file);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("mime_type must match");
+  });
+
+  it("rejects text input when attachments metadata is not empty", async () => {
+    const payload = requestPayload(CONV, "hello");
+    payload.attachments = [{ name: "fake.txt", mime_type: "text/plain", size_bytes: 5 }];
+    const mp = multipart(payload);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("input_type 'text' requires an empty 'attachments' array");
+  });
+
+  it("rejects text input when a file part is sent", async () => {
+    const payload = requestPayload(CONV, "hello");
+    const mp = multipart(payload, REPORT);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("must not include a 'file' part");
+  });
+
+  it("rejects invalid attachment names containing path separators", async () => {
+    const file = { name: "report.txt", content: "data", type: "text/plain" };
+    const payload = requestPayload(CONV, "", file);
+    payload.attachments[0].name = "../secret.txt";
+    const mp = multipart(payload, file);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("name contains invalid characters");
+  });
+
+  it("rejects messages above the maximum length", async () => {
+    const payload = requestPayload(CONV, "x".repeat(20_001));
+    const mp = multipart(payload);
+    const res = await core.app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { ...AUTH, "content-type": mp.contentType },
+      payload: mp.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toContain("at most 20000 characters");
   });
 
   it("returns a clear ERROR for unsupported file types", async () => {

@@ -10,10 +10,16 @@
     "core": "npm run start -w @ahmed/core",
     "mobile": "npm run start -w @ahmed/mobile",
     "test": "npm run test -w @ahmed/core",
-    "typecheck": "npm run typecheck -w @ahmed/contract && npm run typecheck -w @ahmed/core"
+    "typecheck": "npm run typecheck -w @ahmed/contract && npm run typecheck -w @ahmed/core",
+    "typecheck:all": "npm run typecheck && npm run typecheck -w @ahmed/mobile",
+    "verify": "npm run test && npm run typecheck:all"
   },
   "devDependencies": {
     "@playwright/cli": "^0.1.22",
     "typescript": "^7.0.2"
+  },
+  "overrides": {
+    "glob": "14.0.3",
+    "minimatch": "11.0.4"
   }
 }

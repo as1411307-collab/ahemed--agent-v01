@@ -5,15 +5,15 @@
   "dependencies": {
     "@ahmed/contract": "0.1.0",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo": "~57.0.26",
-    "expo-document-picker": "~57.0.3",
-    "expo-file-system": "~57.0.7",
-    "expo-status-bar": "~57.0.1",
-    "react": "19.2.3",
-    "react-native": "0.86.3"
+    "expo": "~58.0.23",
+    "expo-document-picker": "~58.0.4",
+    "expo-file-system": "~58.0.13",
+    "expo-status-bar": "~58.0.4",
+    "react": "19.3.0",
+    "react-native": "0.88.1"
   },
   "devDependencies": {
-    "@types/react": "~19.2.2",
+    "@types/react": "~19.3.0",
     "typescript": "~6.0.3"
   },
   "scripts": {

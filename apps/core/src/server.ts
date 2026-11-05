@@ -22,6 +22,23 @@ import { Store, type Clock } from "./store.js";
 import { Workspace } from "./workspace.js";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_MESSAGE_LENGTH = 20_000;
+const MAX_ID_LENGTH = 100;
+const MAX_ATTACHMENT_NAME_LENGTH = 255;
+const MAX_MIME_LENGTH = 255;
+const MAX_CLIENT_CONTEXT_VALUE_LENGTH = 100;
+const GENERIC_MULTIPART_MIME_TYPES = new Set(["application/octet-stream", "text/plain"]);
+const REQUEST_ALLOWED_KEYS = new Set([
+  "contract_version",
+  "request_id",
+  "conversation_id",
+  "input_type",
+  "message",
+  "attachments",
+  "client_context",
+]);
+const ATTACHMENT_ALLOWED_KEYS = new Set(["name", "mime_type", "size_bytes"]);
+const CLIENT_CONTEXT_ALLOWED_KEYS = new Set(["platform", "app_version", "locale"]);
 
 export interface CoreOptions {
   dbFile: string;
@@ -295,8 +312,15 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     const request = parsed;
     if (deviceSecurity && !deviceSecurity.canReadConversation(request.conversation_id,owner(req).ownerId))
       return reject(403,"Conversation is not owned by the active device.");
+    if (request.input_type === "text" && upload) {
+      return reject(400, "input_type 'text' must not include a 'file' part.", request.request_id);
+    }
     if (request.input_type === "file" && !upload) {
       return reject(400, "input_type 'file' requires a 'file' part.", request.request_id);
+    }
+    if (request.input_type === "file" && request.attachments.length === 1) {
+      const metadataError = validateFileAttachmentMetadata(request.attachments[0], upload!);
+      if (metadataError) return reject(400, metadataError, request.request_id);
     }
 
     // Safe retry: the same request_id never creates a second task.
@@ -435,18 +459,31 @@ function parseRequest(raw: string | undefined): AgentRequest | string {
     return "'payload' is not valid JSON.";
   }
   if (p === null || typeof p !== "object") return "'payload' must be an object.";
+  const topLevelUnknown = unsupportedKeys(p, REQUEST_ALLOWED_KEYS);
+  if (topLevelUnknown.length) return `'payload' contains unsupported field(s): ${topLevelUnknown.join(", ")}.`;
   if (p.contract_version !== CONTRACT_VERSION) return `contract_version must be "${CONTRACT_VERSION}".`;
   for (const k of ["request_id", "conversation_id"] as const) {
-    if (typeof p[k] !== "string" || !(p[k] as string).trim() || (p[k] as string).length > 100) {
+    if (typeof p[k] !== "string" || !(p[k] as string).trim() || (p[k] as string).length > MAX_ID_LENGTH) {
       return `'${k}' must be a non-empty string.`;
     }
+    if ((p[k] as string).trim() !== p[k]) return `'${k}' must not start or end with spaces.`;
   }
   if (p.input_type !== "text" && p.input_type !== "file") return "'input_type' must be \"text\" or \"file\".";
   if (typeof p.message !== "string") return "'message' must be a string.";
+  if (p.message.length > MAX_MESSAGE_LENGTH) {
+    return `'message' must be at most ${MAX_MESSAGE_LENGTH} characters.`;
+  }
   if (p.input_type === "text" && !p.message.trim()) return "'message' is required for text input.";
   if (!Array.isArray(p.attachments)) return "'attachments' must be an array.";
-  if (p.client_context !== undefined && (typeof p.client_context !== "object" || p.client_context === null)) {
-    return "'client_context' must be an object.";
+  const attachments = validateAttachments(p.attachments);
+  if (typeof attachments === "string") return attachments;
+  const clientContext = validateClientContext(p.client_context);
+  if (typeof clientContext === "string") return clientContext;
+  if (p.input_type === "text" && attachments.length > 0) {
+    return "input_type 'text' requires an empty 'attachments' array.";
+  }
+  if (p.input_type === "file" && attachments.length > 1) {
+    return "At most one attachment metadata entry is allowed for file input.";
   }
   return {
     contract_version: CONTRACT_VERSION,
@@ -454,9 +491,92 @@ function parseRequest(raw: string | undefined): AgentRequest | string {
     conversation_id: p.conversation_id as string,
     input_type: p.input_type,
     message: p.message,
-    attachments: (p.attachments as Attachment[]).filter((a) => a && typeof a === "object"),
-    client_context: p.client_context as AgentRequest["client_context"],
+    attachments,
+    client_context: clientContext,
   };
+}
+
+function validateAttachments(value: unknown): Attachment[] | string {
+  if (!Array.isArray(value)) return "'attachments' must be an array.";
+  const out: Attachment[] = [];
+  for (const [index, item] of value.entries()) {
+    if (!item || typeof item !== "object") return `attachments[${index}] must be an object.`;
+    const row = item as Record<string, unknown>;
+    if (row.workspace_path !== undefined) {
+      return `attachments[${index}].workspace_path must not be sent by the client.`;
+    }
+    const unknown = unsupportedKeys(row, ATTACHMENT_ALLOWED_KEYS);
+    if (unknown.length) return `attachments[${index}] contains unsupported field(s): ${unknown.join(", ")}.`;
+    if (typeof row.name !== "string" || !row.name.trim() || row.name.length > MAX_ATTACHMENT_NAME_LENGTH) {
+      return `attachments[${index}].name must be a non-empty string up to ${MAX_ATTACHMENT_NAME_LENGTH} chars.`;
+    }
+    if (invalidAttachmentName(row.name.trim())) {
+      return `attachments[${index}].name contains invalid characters.`;
+    }
+    if (row.mime_type !== undefined && (typeof row.mime_type !== "string" || row.mime_type.length > MAX_MIME_LENGTH)) {
+      return `attachments[${index}].mime_type must be a string up to ${MAX_MIME_LENGTH} chars.`;
+    }
+    if (
+      row.size_bytes !== undefined &&
+      (!Number.isInteger(row.size_bytes) || (row.size_bytes as number) < 0 || (row.size_bytes as number) > MAX_UPLOAD_BYTES)
+    ) {
+      return `attachments[${index}].size_bytes must be an integer between 0 and ${MAX_UPLOAD_BYTES}.`;
+    }
+    out.push({
+      name: row.name.trim(),
+      mime_type: row.mime_type as string | undefined,
+      size_bytes: row.size_bytes as number | undefined,
+    });
+  }
+  return out;
+}
+
+function validateClientContext(value: unknown): AgentRequest["client_context"] | string {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null) return "'client_context' must be an object.";
+  const raw = value as Record<string, unknown>;
+  const unknown = unsupportedKeys(raw, CLIENT_CONTEXT_ALLOWED_KEYS);
+  if (unknown.length) return `'client_context' contains unsupported field(s): ${unknown.join(", ")}.`;
+  const out: AgentRequest["client_context"] = {};
+  for (const key of ["platform", "app_version", "locale"] as const) {
+    const v = raw[key];
+    if (v === undefined) continue;
+    if (typeof v !== "string" || !v.trim() || v.length > MAX_CLIENT_CONTEXT_VALUE_LENGTH) {
+      return `'client_context.${key}' must be a non-empty string up to ${MAX_CLIENT_CONTEXT_VALUE_LENGTH} chars.`;
+    }
+    out[key] = v.trim();
+  }
+  return out;
+}
+
+function unsupportedKeys(obj: Record<string, unknown>, allowed: Set<string>): string[] {
+  return Object.keys(obj).filter((key) => !allowed.has(key));
+}
+
+function validateFileAttachmentMetadata(
+  meta: Attachment,
+  upload: { filename: string; mimetype: string; buffer: Buffer },
+): string | null {
+  if (meta.size_bytes !== undefined && meta.size_bytes !== upload.buffer.length) {
+    return "attachments[0].size_bytes must match the uploaded file size.";
+  }
+  const hinted = normalizeMime(meta.mime_type);
+  const actual = normalizeMime(upload.mimetype);
+  if (hinted && actual && !GENERIC_MULTIPART_MIME_TYPES.has(actual) && hinted !== actual) {
+    return "attachments[0].mime_type must match the uploaded file MIME type.";
+  }
+  return null;
+}
+
+function normalizeMime(value: string | undefined): string | null {
+  const trimmed = value?.trim().toLowerCase();
+  if (!trimmed) return null;
+  const [type] = trimmed.split(";", 1);
+  return type || null;
+}
+
+function invalidAttachmentName(name: string): boolean {
+  return /[\0-\x1F]/.test(name) || /[\\/]/.test(name) || name === "." || name === "..";
 }
 
 /** Saves an upload to inbox/ with a safe, unique name. Returns the workspace-relative path. */

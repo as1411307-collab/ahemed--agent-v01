@@ -37,6 +37,21 @@ An optional `file` part carries the uploaded file.
 
 `ClientContext`: `{ platform?: string, app_version?: string, locale?: string }`.
 
+Validation rules:
+- `AgentRequest` accepts only these fields: `contract_version`, `request_id`, `conversation_id`,
+  `input_type`, `message`, `attachments`, `client_context`.
+- `message` maximum length is `20000` characters.
+- `request_id` and `conversation_id` must not contain leading/trailing spaces.
+- For `input_type = "file"`, `attachments` may contain **at most one** metadata entry.
+- For `input_type = "text"`, `attachments` must be empty and no multipart `file` part is allowed.
+- The client must never send `attachments[].workspace_path`; it is set by the Core only.
+- `attachments[].name` must not contain path separators (`/`, `\`) or control characters.
+- If present, `attachments[].size_bytes` must be an integer between `0` and `25MB`.
+- For file input, when `attachments[0].size_bytes` is present it must match the uploaded file byte size.
+- For file input, when `attachments[0].mime_type` is present it must match the multipart file MIME type
+  (except when the multipart MIME is generic `application/octet-stream` or `text/plain`).
+- Unknown fields are rejected for `AgentRequest`, `Attachment`, and `ClientContext`.
+
 ## 2. Response — `AgentResponse`
 
 | field            | type                 | notes |
