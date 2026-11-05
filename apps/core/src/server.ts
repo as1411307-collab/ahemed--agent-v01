@@ -1,5 +1,4 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import {registerHermesBridge,isHermesProposalRoute,validBridgeBearer,type HermesBridgeOptions} from "./hermes-bridge.js";
 import {ActionBrokerEnforcer, actionDigest, approvalBytes, type ActionEnvelope} from "./security/action-broker.js";
 import {SqliteActionStore} from "./security/sqlite-action-store.js";
 import {DeviceSessions, type DeviceIdentity} from "./security/device-session.js";
@@ -46,7 +45,6 @@ export interface CoreOptions {
   /** Used only by historical unit tests. Never supplied by main.ts. */
   appToken?: string;
   deviceSecurity?: { ownerId: string; pairingCode: string | null };
-  hermesBridge?: HermesBridgeOptions;
   model: ModelClient;
   clock?: Clock;
   approvalTtlMs?: number;
@@ -101,10 +99,6 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
     "/v1/security/session/challenge", "/v1/security/session",
   ]);
   app.addHook("onRequest", async (req, reply) => {
-    if (deviceSecurity && opts.hermesBridge && isHermesProposalRoute(req.method,req.url.split("?")[0])) {
-      if(validBridgeBearer(req.headers.authorization,opts.hermesBridge.proposalKey))return;
-      return reply.code(401).send(errorResponse("UNAUTHORIZED","Hermes proposal-only credentials required."));
-    }
     if (deviceSecurity && req.method === "POST" && publicSecurityRoutes.has(req.url.split("?")[0])) return;
     if (deviceSecurity) {
       const identity = deviceSecurity.authenticate(req.headers.authorization);
@@ -163,11 +157,6 @@ export async function createCore(opts: CoreOptions): Promise<Core> {
       .send(errorResponse(status === 500 ? "INTERNAL" : "BAD_REQUEST", status === 500 ? "Internal error." : err.message));
   });
 
-
-  if(deviceSecurity && brokerStore && opts.hermesBridge) {
-    registerHermesBridge({app,db,store,devices:deviceSecurity,brokerStore,
-      deviceOwner:(req)=>owner(req),options:opts.hermesBridge,now});
-  }
 
   // ---- device enrollment and short-lived signed authentication ----
   if (deviceSecurity) {

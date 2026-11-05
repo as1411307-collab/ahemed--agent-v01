@@ -28,8 +28,7 @@ import {
 } from "@ahmed/contract";
 import {ApiError, CORE_URL, decide, getConversation, getTask, newId, sendMessage,
  requestSignedPreview, submitSignedPreview, rejectSignedPreview,
- listHermesApprovals,previewHermesApproval,startHermesRun,submitHermesDemoApproval,rejectHermesDemoApproval,
- type HermesPendingApproval,type PickedFile} from "./src/api";
+ type PickedFile} from "./src/api";
 import {ApprovalReview} from "./src/security/ApprovalReview";
 import type {DisplayEnvelope} from "./src/security/approval-display";
 import {enrollDevice,getDeviceAccessToken,hasPairedDevice,revokeOwnDevice} from "./src/security/device-client";
@@ -97,9 +96,6 @@ export default function App() {
   const [pairingBusy,setPairingBusy] = useState(false);
   const [pairingError,setPairingError] = useState<string|null>(null);
   const [activeReview,setActiveReview] = useState<DisplayEnvelope|null>(null);
-  const [hermesApprovals,setHermesApprovals] = useState<HermesPendingApproval[]>([]);
-  const [reviewHermes,setReviewHermes] = useState(false);
-  const [activeHermesProposalId,setActiveHermesProposalId] = useState<string|null>(null);
   const listRef = useRef<FlatList<ConversationMessage>>(null);
 
   // ---- restore conversation id and state from the Core ----
@@ -144,24 +140,6 @@ export default function App() {
   const taskById = useMemo(() => new Map(tasks.map((t) => [t.task_id, t])), [tasks]);
   const running = tasks.filter((t) => isRunning(t.response.status));
   const approvals = tasks.filter((t) => t.response.response_type === "APPROVAL_REQUEST");
-
-  // Hermes and the existing Core are distinct workers; the phone displays
-  // only Gateway-owned approval envelopes, never native Hermes tool prompts.
-  const refreshHermes = useCallback(async () => {
-    try {
-      const result=await listHermesApprovals();
-      if(result && Array.isArray(result.items))setHermesApprovals(result.items);
-    } catch {
-      // Bridge is optional; never display stale pending approvals after network failure.
-      setHermesApprovals([]);
-    }
-  }, []);
-  useEffect(()=>{
-    if(!conversationId || needsPairing)return;
-    void refreshHermes();
-    const timer=setInterval(()=>void refreshHermes(),5000);
-    return ()=>clearInterval(timer);
-  },[conversationId,needsPairing,refreshHermes]);
 
   // ---- poll unfinished tasks every 2 seconds ----
   const runningKey = running.map((t) => `${t.task_id}:${t.response.status}`).join(",");
@@ -218,19 +196,6 @@ export default function App() {
     void doSend({ requestId: newId(), text: t, file });
   };
 
-  const onSendHermes = async () => {
-    if(sending || !conversationId || !text.trim() || file)return;
-    setSending(true);setHint(null);
-    try {
-      const result=await startHermesRun({requestId:newId(),conversationId,input:text.trim()});
-      setText("");
-      setHint("Hermes run started: "+result.runId+". DEMO action review only.");
-      setError(null);
-      await refreshHermes();
-    } catch(e) {setError({text:errorText(e),retry:()=>void onSendHermes()});}
-    finally {setSending(false);}
-  };
-
   const onPick = async () => {
     setHint(null);
     try {
@@ -252,50 +217,23 @@ export default function App() {
     try{
       const preview=await requestSignedPreview(task.task_id,a.action_id);
       if(preview.mode!=='DEMO_NO_EXECUTION')throw new Error('Server did not confirm demo mode');
-      setReviewHermes(false);
       setActiveReview(preview.envelope);
       setError(null);
     }catch(e){setError({text:errorText(e),retry:()=>void startSignedReview(task)});}
     finally{setDeciding(null);}
   }
-  async function startHermesReview(item:HermesPendingApproval):Promise<void>{
-    if(item.mode!=="DEMO_NO_EXECUTION" || deciding)return;
-    setDeciding(item.actionId);
-    try{
-      const p=await previewHermesApproval(item.proposalId);
-      if(p.mode!=="DEMO_NO_EXECUTION" || p.proposalId!==item.proposalId)
-        throw new Error("Invalid Gateway approval preview");
-      setActiveHermesProposalId(item.proposalId);
-      setReviewHermes(true);
-      setActiveReview(p.envelope);
-    }catch(e){setError({text:errorText(e),retry:()=>void startHermesReview(item)});}
-    finally{setDeciding(null);}
-  }
   async function signReviewed(signatureDerBase64:string):Promise<void>{
     if(!activeReview)throw new Error('No signed preview');
-    if(reviewHermes){
-      if(!activeHermesProposalId)throw new Error("Missing Gateway proposal identity");
-      const result=await submitHermesDemoApproval(activeHermesProposalId,signatureDerBase64);
-      if(result.status!=="DEMO_VERIFIED_NO_EFFECT" || result.execution!=="NONE")throw new Error("Demo receipt mismatch");
-      setHermesApprovals(v=>v.filter(x=>x.actionId!==activeHermesProposalId));
-    } else {
-      const result=await submitSignedPreview(activeReview.actionId,signatureDerBase64);
-      if(result.status!=="DEMO_SIGNED_NO_EXECUTION")throw new Error("Unexpected server result");
-    }
-    setActiveReview(null);setReviewHermes(false);setActiveHermesProposalId(null);
+    const result=await submitSignedPreview(activeReview.actionId,signatureDerBase64);
+    if(result.status!=='DEMO_SIGNED_NO_EXECUTION')throw new Error('Unexpected server result');
+    setActiveReview(null);
     setHint("Signed receipt verified. DEMO ONLY: no action executed.");
   }
   async function rejectReviewed():Promise<void>{
     if(!activeReview)return;
     try{
-      if(reviewHermes){
-        if(!activeHermesProposalId)throw new Error("Missing Gateway proposal identity");
-        await rejectHermesDemoApproval(activeHermesProposalId);
-        setHermesApprovals(v=>v.filter(x=>x.actionId!==activeHermesProposalId));
-      }else{
-        await rejectSignedPreview(activeReview.actionId);
-      }
-      setActiveReview(null);setReviewHermes(false);setActiveHermesProposalId(null);
+      await rejectSignedPreview(activeReview.actionId);
+      setActiveReview(null);
       setHint("Proposal rejected. Nothing executed.");
     }catch(e){setError({text:errorText(e),retry:()=>void rejectReviewed()});}
   }
@@ -429,19 +367,6 @@ export default function App() {
           />
         ))}
 
-        {hermesApprovals.map((item)=>(
-          <View key={item.actionId} style={[s.runningRow,{gap:10}]}>
-            <Text style={{color:C.gold,flex:1}}>
-              Hermes DEMO · {item.displayName}
-              {"\n"}To: {item.destination}
-            </Text>
-            <Pressable accessibilityRole="button" onPress={()=>void startHermesReview(item)}
-              disabled={deciding===item.actionId} style={s.headerBtn}>
-              <Text style={s.headerBtnText}>Review & sign</Text>
-            </Pressable>
-          </View>
-        ))}
-
         {file && (
           <View style={s.fileChip}>
             <Text style={s.fileChipText} numberOfLines={1}>
@@ -477,11 +402,6 @@ export default function App() {
             placeholderTextColor={C.muted}
             multiline
           />
-          <Pressable accessibilityRole="button" onPress={()=>void onSendHermes()}
-            disabled={sending || !text.trim() || !!file}
-            style={[s.headerBtn,(sending || !text.trim() || !!file) && s.disabled]}>
-            <Text style={s.headerBtnText}>Hermes DEMO</Text>
-          </Pressable>
           {/* Never a dead button: when there is nothing to send, pressing it explains why. */}
           <Pressable
             onPress={onSend}
