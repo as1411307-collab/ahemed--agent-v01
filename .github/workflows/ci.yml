@@ -23,6 +23,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
-      - run: npm run typecheck
-      - run: npm run typecheck -w @ahmed/mobile
+      - run: npm run verify
+      - name: Fail on high/critical advisories
+        run: npm audit --audit-level=high
