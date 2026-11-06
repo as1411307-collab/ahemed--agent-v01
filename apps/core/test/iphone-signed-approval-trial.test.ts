@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {createCore,type Core} from '../src/server.js';
 import {deviceChallengeBytes,type DeviceChallenge} from '../src/security/device-session.js';
 import {approvalBytes,type ActionEnvelope} from '../src/security/action-broker.js';
-import {approvalSignedText,approvalCanonicalText} from '../../mobile/src/security/approval-display.js';
+import {approvalSignedText,approvalCanonicalText} from './support/approval-display.js';
 import {makeEnv,scriptedModel,multipart,requestPayload,type Env} from './helpers.js';
 
 const CODE='secure-pairing-code-for-tests-9876543210';

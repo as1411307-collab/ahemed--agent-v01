@@ -1,4 +1,4 @@
-import {canonicalize} from "../../../core/src/security/canonical";
+import {canonicalize} from "../../src/security/canonical.js";
 // The iOS client intentionally does not import Node-only broker types:
 // its wire contract is structurally matched by the Core integration tests.
 interface ApprovalContext {

@@ -4,15 +4,13 @@
   "version": "0.1.0",
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/core"
   ],
   "scripts": {
     "core": "npm run start -w @ahmed/core",
-    "mobile": "npm run start -w @ahmed/mobile",
     "test": "npm run test -w @ahmed/core",
     "typecheck": "npm run typecheck -w @ahmed/contract && npm run typecheck -w @ahmed/core",
-    "typecheck:all": "npm run typecheck && npm run typecheck -w @ahmed/mobile",
-    "verify": "npm run test && npm run typecheck:all",
+    "verify": "npm run test && npm run typecheck",
     "readiness:dev": "npx --yes tsx scripts/readiness-check.ts --mode=dev",
     "readiness:prod": "npx --yes tsx scripts/readiness-check.ts --mode=prod",
     "preflight": "npm run verify && npm run readiness:dev"

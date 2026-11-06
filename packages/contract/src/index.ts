@@ -1,4 +1,4 @@
-// Mirrors V0_CONTRACT.md field-for-field. Change both together.
+// Shared Core API contract. No active legacy V0_CONTRACT.md document.
 
 export const CONTRACT_VERSION = "0.1" as const;
 export type ContractVersion = typeof CONTRACT_VERSION;
