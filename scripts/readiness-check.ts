@@ -114,9 +114,7 @@ function main(argv: string[]): number {
   const repoRoot = process.cwd();
   const checks: Check[] = [];
   const coreEnvPath = path.join(repoRoot, "apps/core/.env");
-  const mobileEnvPath = path.join(repoRoot, "apps/mobile/.env");
   const coreEnv = readEnvFile(coreEnvPath);
-  const mobileEnv = readEnvFile(mobileEnvPath);
 
   add(
     checks,
@@ -126,15 +124,6 @@ function main(argv: string[]): number {
     coreEnv.exists ? "apps/core/.env found." : "apps/core/.env is missing.",
     "copy apps/core/.env.example to apps/core/.env",
   );
-  add(
-    checks,
-    "mobile.env",
-    "ERROR",
-    mobileEnv.exists,
-    mobileEnv.exists ? "apps/mobile/.env found." : "apps/mobile/.env is missing.",
-    "copy apps/mobile/.env.example to apps/mobile/.env",
-  );
-
   const coreOwnerId = pick(process.env.CORE_OWNER_ID, coreEnv.values.CORE_OWNER_ID);
   add(
     checks,
@@ -185,26 +174,6 @@ function main(argv: string[]): number {
     modelName ? "present." : "missing.",
     "set MODEL_NAME in apps/core/.env",
   );
-
-  const coreUrl = pick(process.env.EXPO_PUBLIC_CORE_URL, mobileEnv.values.EXPO_PUBLIC_CORE_URL);
-  add(
-    checks,
-    "EXPO_PUBLIC_CORE_URL",
-    "ERROR",
-    !!coreUrl,
-    coreUrl ? "present." : "missing.",
-    "set EXPO_PUBLIC_CORE_URL in apps/mobile/.env",
-  );
-  if (coreUrl) {
-    add(
-      checks,
-      "EXPO_PUBLIC_CORE_URL scheme",
-      "ERROR",
-      /^https:\/\//i.test(coreUrl),
-      "must use https://",
-      "use trusted TLS endpoint (reverse proxy / tailscale HTTPS)",
-    );
-  }
 
   const host = pick(process.env.HOST, coreEnv.values.HOST) ?? "127.0.0.1";
   add(
